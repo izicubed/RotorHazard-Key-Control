@@ -1,0 +1,142 @@
+/* KEY CONTROL - Run page panel.
+   Styled to match the Auto Marshalling panel system: same font stack and
+   sizes, same shared slim-bar header geometry (18px row + 2x5px padding +
+   2x1px border = 30px collapsed), same dark/light palettes via CSS
+   variables (class .rh-bk-light, applied from the Theme option). */
+
+[id^="ui-custom-key_control_load_"] { display: none !important; }
+
+/* ------------------------------------------------------------- palettes */
+
+#rh-bk {
+	/* dark scheme (default) — mirrors the Auto Marshalling palette */
+	--bk-bg: #14171d;
+	--bk-border: #2b313b;
+	--bk-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+	--bk-fg: #eaeef4;
+	--bk-muted: #7d8798;
+	--bk-soft: #9aa4b3;
+	--bk-head-bg: #1b2028;
+	--bk-edge: #262b34;
+	--bk-spark: #6fd0ff;            /* our identity glyph colour */
+	--bk-accent: #8fb7ff;           /* seat labels */
+	--bk-row-edge: #1d222b;
+	--bk-chip-ok-bg: #16341f;    --bk-chip-ok-fg: #6fe89a;
+	--bk-chip-warn-bg: #3a2f12;  --bk-chip-warn-fg: #f5c145;
+	--bk-chip-err-bg: #3a1e20;   --bk-chip-err-fg: #ffb3b3;
+	--bk-chip-info-bg: #1d2b3a;  --bk-chip-info-fg: #8fb7ff;
+	--bk-kbd-bg: #2a3346;
+	--bk-kbd-border: #3a4560;
+	--bk-kbd-fg: #cdd6e4;
+}
+#rh-bk.rh-bk-light {
+	/* light scheme */
+	--bk-bg: #ffffff;
+	--bk-border: #dfe3ea;
+	--bk-shadow: 0 4px 14px rgba(30, 40, 60, 0.14);
+	--bk-fg: #1c2330;
+	--bk-muted: #6b7381;
+	--bk-soft: #6b7381;
+	--bk-head-bg: #f2f4f8;
+	--bk-edge: #e4e8ee;
+	--bk-spark: #1279b5;
+	--bk-accent: #3b6fd4;
+	--bk-row-edge: #edf0f4;
+	--bk-chip-ok-bg: #d9f2e2;    --bk-chip-ok-fg: #177a45;
+	--bk-chip-warn-bg: #f8ecd0;  --bk-chip-warn-fg: #8f6400;
+	--bk-chip-err-bg: #fdecec;   --bk-chip-err-fg: #b52f2f;
+	--bk-chip-info-bg: #dfe9fb;  --bk-chip-info-fg: #2c5cc5;
+	--bk-kbd-bg: #eef2f9;
+	--bk-kbd-border: #c3cede;
+	--bk-kbd-fg: #39424f;
+}
+
+/* ---------------------------------------------------------- main panel */
+
+/* Shared dock for our plugin panels above the pilot table on the Run page
+   (created by whichever of our plugins loads first; the same rules ship with
+   each of them). Panels sit side by side, stretch to equal height, wrap onto
+   a new row when narrow, and the row is CENTERED. */
+#rh-plugin-dock {
+	display: flex; flex-wrap: wrap; gap: 8px;
+	align-items: stretch; justify-content: center;
+	margin: 7px 0; width: 100%;
+}
+#rh-plugin-dock #rh-bk { margin: 0; order: 4; flex: 0 1 auto;
+	width: auto; min-width: 340px; }
+#rh-plugin-dock #rh-bk { display: flex; flex-direction: column; }
+/* a COLLAPSED panel must stay a slim bar — never stretch to the height of
+   an expanded neighbour (rules cover all our plugins, whichever CSS wins) */
+#rh-plugin-dock > #rh-gc.rh-gc-collapsed,
+#rh-plugin-dock > #rh-cm.rh-cm-collapsed,
+#rh-plugin-dock > #rh-cm-rt.rh-cm-collapsed,
+#rh-plugin-dock > #rh-cm-rt.rh-cm-empty,
+#rh-plugin-dock > #rh-bk.rh-bk-collapsed { align-self: flex-start; }
+
+#rh-bk {
+	display: block; width: 100%; max-width: 520px; margin: 7px auto;
+	box-sizing: border-box; background: var(--bk-bg);
+	border: 1px solid var(--bk-border);
+	border-radius: 8px; box-shadow: var(--bk-shadow);
+	font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	color: var(--bk-fg); overflow: hidden;
+}
+
+/* header: SHARED SLIM-BAR GEOMETRY — identical in every panel of ours so all
+   of them are exactly the same height when collapsed: 18px header row +
+   2 x 5px padding + 2 x 1px panel border = 30px. */
+#rh-bk .rh-bk-head {
+	display: flex; align-items: center; gap: 6px; padding: 5px 9px;
+	background: var(--bk-head-bg); border-bottom: 1px solid var(--bk-edge);
+	min-height: 18px; box-sizing: content-box;
+	cursor: pointer; user-select: none;
+}
+#rh-bk .rh-bk-title { font-size: 10px; font-weight: 700;
+	letter-spacing: 0.03em; text-transform: uppercase; flex: 1 1 auto;
+	white-space: nowrap; }
+#rh-bk .rh-bk-spark { color: var(--bk-spark); margin-right: 2px; }
+#rh-bk .rh-bk-headmut { font-size: 10px; color: var(--bk-muted);
+	white-space: nowrap; }
+#rh-bk .rh-bk-chev { font-size: 9px; color: var(--bk-muted); }
+
+/* status chips (same metrics as the Auto Marshalling chips) */
+#rh-bk .rh-bk-chip { font-size: 8px; font-weight: 700; letter-spacing: 0.02em;
+	text-transform: uppercase; padding: 1px 4px; border-radius: 3px;
+	white-space: nowrap; flex: 0 0 auto; }
+#rh-bk .rh-bk-c-ok { background: var(--bk-chip-ok-bg); color: var(--bk-chip-ok-fg); }
+#rh-bk .rh-bk-c-warn { background: var(--bk-chip-warn-bg); color: var(--bk-chip-warn-fg); }
+#rh-bk .rh-bk-c-err { background: var(--bk-chip-err-bg); color: var(--bk-chip-err-fg); }
+#rh-bk .rh-bk-c-info { background: var(--bk-chip-info-bg); color: var(--bk-chip-info-fg); }
+
+/* collapsed to the slim header bar */
+#rh-bk.rh-bk-collapsed .rh-bk-list { display: none; }
+#rh-bk.rh-bk-collapsed .rh-bk-head { border-bottom: none; }
+
+/* mapping rows (metrics of the Auto Marshalling RT feed rows) */
+#rh-bk .rh-bk-list { padding: 3px 0; }
+#rh-bk .rh-bk-row { display: flex; align-items: center; gap: 6px;
+	padding: 3px 9px; font-size: 11px; min-width: 0; }
+#rh-bk .rh-bk-row + .rh-bk-row { border-top: 1px solid var(--bk-row-edge); }
+#rh-bk .rh-bk-kb { flex: 0 0 auto; font-size: 9px; font-weight: 700;
+	color: var(--bk-muted); font-variant-numeric: tabular-nums; min-width: 24px; }
+#rh-bk .rh-bk-seat { flex: 0 0 auto; font-size: 9px; font-weight: 700;
+	color: var(--bk-accent); min-width: 22px; }
+#rh-bk .rh-bk-name { flex: 1 1 auto; font-weight: 600;
+	white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#rh-bk .rh-bk-none { flex: 1 1 auto; color: var(--bk-muted); font-size: 10px;
+	font-style: italic; white-space: nowrap; overflow: hidden;
+	text-overflow: ellipsis; }
+#rh-bk .rh-bk-keys { flex: 0 0 auto; margin-left: auto; color: var(--bk-muted);
+	font-size: 9px; white-space: nowrap; }
+#rh-bk .rh-bk-keys kbd {
+	display: inline-block; background: var(--bk-kbd-bg);
+	border: 1px solid var(--bk-kbd-border); border-bottom-width: 2px;
+	border-radius: 3px; padding: 0 3px; margin: 0 1px;
+	font-size: 8px; line-height: 1.4; color: var(--bk-kbd-fg);
+	font-family: inherit; font-variant-numeric: tabular-nums;
+}
+#rh-bk .rh-bk-empty { padding: 4px 9px 6px; color: var(--bk-muted);
+	font-size: 10px; }
+
+/* hide helper */
+#rh-bk.rh-bk-hidden { display: none !important; }

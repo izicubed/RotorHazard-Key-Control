@@ -1,0 +1,17 @@
+[Unit]
+Description=KEY CONTROL button-keyboard forwarder for RotorHazard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# EDIT: point --server at your RotorHazard server
+ExecStart=/usr/bin/python3 /home/pi/key_control/keyboard_forwarder.py --server http://ROTORHAZARD_HOST:5000
+Restart=always
+RestartSec=5
+User=pi
+# 'input' group grants /dev/input access without root
+SupplementaryGroups=input
+
+[Install]
+WantedBy=multi-user.target
