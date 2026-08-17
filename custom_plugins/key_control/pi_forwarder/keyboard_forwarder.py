@@ -164,8 +164,10 @@ class Forwarder:
 
         while True:
             try:
-                self.sio.connect(self.server,
-                                 transports=['websocket', 'polling'])
+                # websocket only: polling sessions leave stale session ids on
+                # the server after a RotorHazard restart ("Invalid session"
+                # noise in the error log); websocket sessions die cleanly
+                self.sio.connect(self.server, transports=['websocket'])
                 return
             except Exception as ex:
                 log.warning('connect failed (%s), retrying in 5s', ex)
