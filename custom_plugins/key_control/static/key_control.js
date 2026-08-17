@@ -1,8 +1,12 @@
-/* KEY CONTROL - Run page panel, styled to match the Auto
- * Marshalling panel system (same dock, header geometry, fonts and chips).
- * Driven by the server `button_kb_state` snapshot; requested on page load
- * and refreshed every few seconds. Collapsed to a slim bar by default; the
- * header always carries the link status so the bar alone tells the story. */
+/* KEY CONTROL - Run page panel, styled to match the Auto Marshalling panel
+ * system (same dock, header geometry, fonts and chips).
+ *
+ * Header: Manual|Semi mode switch (like the Auto Marshalling school
+ * selector) and the Semi confirmation window (seconds). Rows: keyboard ->
+ * seat/pilot with the recent-lap dots (green confirmed / yellow unconfirmed /
+ * blue button-only / red deleted). Footer: Calibrate flow (bind keyboards to
+ * channels by pressing a key on each in turn), mapping reset and Link.
+ * Driven by the server `button_kb_state` snapshot. */
 (function () {
 	'use strict';
 
@@ -56,12 +60,15 @@
 	}
 
 	// -------------------------------------------------------------- collapse
-	// Collapsed slim bar by default. Auto-expands only while the forwarder
-	// link is DOWN with the plugin enabled (the operator must notice); manual
-	// expand/collapse by header click is session-only.
+	// Collapsed slim bar by default. Auto-expands while the forwarder link is
+	// DOWN with the plugin enabled, during calibration, and during a running
+	// race (the lap dots are the point of the panel); manual expand/collapse
+	// by header click is session-only.
 	function isOpen() {
+		if (state && state.calibration) { return true; }
 		if (state && state.enabled && state.forwarder && !state.forwarder.online) { return true; }
 		if (userOpen !== null) { return userOpen; }
+		if (state && state.enabled && state.race_status === 1) { return true; }
 		return false;
 	}
 
@@ -75,18 +82,76 @@
 			'<div class="rh-bk-head"><span class="rh-bk-chev">▸</span>' +
 			'<div class="rh-bk-title"><span class="rh-bk-spark">⌨</span> Key Control</div>' +
 			'<span class="rh-bk-headmut"></span>' +
+			'<div class="rh-bk-seg" title="Work mode. Manual: the timer’s own RSSI laps are suppressed, every lap comes from the buttons. Semi: the timer counts as usual and key presses confirm laps inside the window.">' +
+			'<button class="rh-bk-mode" data-mode="manual">Manual</button>' +
+			'<button class="rh-bk-mode" data-mode="semi">Semi</button></div>' +
+			'<label class="rh-bk-thr" title="Semi confirmation window: a key press within this many seconds of a timer lap confirms it; a press with no timer lap inside the window adds a manual lap.">±<input type="number" min="0.2" max="30" step="0.1">s</label>' +
 			'<span class="rh-bk-chip rh-bk-link"></span></div>' +
-			'<div class="rh-bk-list"></div>';
+			'<div class="rh-bk-cal rh-bk-hidden"></div>' +
+			'<div class="rh-bk-list"></div>' +
+			'<div class="rh-bk-foot">' +
+			'<button class="rh-bk-btn rh-bk-cal-btn">Calibrate</button>' +
+			'<button class="rh-bk-btn rh-bk-reset-btn" title="Clear all fixed pins: keyboard N controls the Nth occupied seat again">Auto map</button>' +
+			'<button class="rh-bk-btn rh-bk-link-btn" title="Contact the forwarder at the Key Control IP (Settings) and point it at this server">Link</button>' +
+			'<span class="rh-bk-legend"><i class="rh-bk-dot rh-bk-m-green"></i>confirmed <i class="rh-bk-dot rh-bk-m-yellow"></i>unconfirmed <i class="rh-bk-dot rh-bk-m-blue"></i>manual <i class="rh-bk-dot rh-bk-m-red"></i>deleted</span>' +
+			'</div>';
 		panel.querySelector('.rh-bk-head').addEventListener('click', function (e) {
-			if (e.target.closest('button, input')) { return; }
+			if (e.target.closest('button, input, label')) { return; }
 			userOpen = !isOpen();
 			render();
+		});
+		Array.prototype.forEach.call(panel.querySelectorAll('.rh-bk-mode'), function (b) {
+			b.addEventListener('click', function () {
+				socket.emit('button_kb_set_mode', { mode: b.getAttribute('data-mode') });
+			});
+		});
+		var thr = panel.querySelector('.rh-bk-thr input');
+		thr.addEventListener('change', function () {
+			var v = parseFloat(thr.value);
+			if (!isNaN(v)) { socket.emit('button_kb_set_threshold', { sec: v }); }
+		});
+		panel.querySelector('.rh-bk-cal-btn').addEventListener('click', function () {
+			var active = !!(state && state.calibration);
+			socket.emit('button_kb_calibrate', { action: active ? 'cancel' : 'start' });
+		});
+		panel.querySelector('.rh-bk-reset-btn').addEventListener('click', function () {
+			socket.emit('button_kb_calibrate', { action: 'reset' });
+		});
+		panel.querySelector('.rh-bk-link-btn').addEventListener('click', function () {
+			socket.emit('button_kb_link', {});
 		});
 		d.appendChild(panel);
 		return panel;
 	}
 
 	function q(sel) { return panel.querySelector(sel); }
+
+	function lapDots(m) {
+		var html = '<span class="rh-bk-laps">';
+		var laps = m.laps || [];
+		var last = null;
+		laps.forEach(function (l) {
+			var mark = l.mark === 'suppressed' ? 'red' : (l.mark || 'yellow');
+			var what = l.n === 0 ? 'Holeshot' : (l.n == null || l.n < 0 ? 'Lap' : 'Lap ' + l.n);
+			var title = what + ' · ' + (l.t || '') +
+				(l.mark === 'suppressed' ? ' · suppressed (Manual mode)' :
+				 l.deleted ? ' · deleted' :
+				 l.mark === 'green' ? ' · confirmed' :
+				 l.mark === 'blue' ? ' · manual (button)' : ' · unconfirmed');
+			html += '<i class="rh-bk-dot rh-bk-m-' + mark +
+				(l.mark === 'suppressed' ? ' rh-bk-m-hollow' : '') +
+				'" title="' + esc(title) + '"></i>';
+			last = l;
+		});
+		html += '</span>';
+		if (last) {
+			html += '<span class="rh-bk-lastlap rh-bk-t-' +
+				(last.mark === 'suppressed' ? 'red' : (last.mark || 'yellow')) +
+				(last.deleted || last.mark === 'suppressed' ? ' rh-bk-strike' : '') +
+				'">' + esc(last.t || '') + '</span>';
+		}
+		return html;
+	}
 
 	function render() {
 		if (!onRunPage()) { return; }
@@ -101,6 +166,7 @@
 		var link = q('.rh-bk-link');
 		var mut = q('.rh-bk-headmut');
 		var list = q('.rh-bk-list');
+		var calBox = q('.rh-bk-cal');
 
 		if (!state) {
 			link.className = 'rh-bk-chip rh-bk-link rh-bk-c-info';
@@ -110,27 +176,54 @@
 			return;
 		}
 
+		// mode switch + threshold
+		Array.prototype.forEach.call(panel.querySelectorAll('.rh-bk-mode'), function (b) {
+			b.classList.toggle('rh-bk-mode-on',
+				b.getAttribute('data-mode') === state.mode);
+		});
+		var thr = q('.rh-bk-thr input');
+		if (document.activeElement !== thr) { thr.value = state.threshold; }
+		q('.rh-bk-thr').classList.toggle('rh-bk-dim', state.mode !== 'semi');
+		q('.rh-bk-legend').classList.toggle('rh-bk-hidden', state.mode !== 'semi');
+
 		var fw = state.forwarder || {};
 		if (!state.enabled) {
 			link.className = 'rh-bk-chip rh-bk-link rh-bk-c-warn';
 			link.textContent = 'disabled';
-			link.title = 'Plugin is disabled in Settings → USB Button Keyboards';
+			link.title = 'Plugin is disabled in Settings → KEY CONTROL';
 		} else if (fw.online) {
 			link.className = 'rh-bk-chip rh-bk-link rh-bk-c-ok';
 			link.textContent = 'link up';
-			link.title = 'Forwarder connected' + (fw.host ? ' from ' + fw.host : '');
+			link.title = 'Forwarder connected' + (fw.host ? ' from ' + fw.host : '') +
+				(fw.server ? ' → ' + fw.server : '');
 		} else {
 			link.className = 'rh-bk-chip rh-bk-link rh-bk-c-err';
 			link.textContent = 'link down';
-			link.title = 'No forwarder heartbeat — check the ' +
-				'button-keyboards-forwarder service on the keyboard Pi';
+			link.title = 'No forwarder heartbeat — check the key-control-forwarder ' +
+				'service' + (state.kc_ip ? ' at ' + state.kc_ip : '') +
+				', or use Link after setting the Key Control IP';
 		}
 
-		// collapsed-header summary: enough context without expanding
+		// collapsed-header summary
 		var mapping = state.mapping || [];
 		var mapped = mapping.filter(function (m) { return m.seat != null; }).length;
-		mut.textContent = mapped + '/' + mapping.length + ' mapped' +
+		mut.textContent = (state.mode === 'manual' ? 'manual · ' : 'semi ±' + state.threshold + 's · ') +
+			mapped + '/' + mapping.length +
 			(fw.host && fw.online ? ' · ' + fw.host : '');
+
+		// calibration banner
+		var cal = state.calibration;
+		calBox.classList.toggle('rh-bk-hidden', !cal);
+		if (cal) {
+			calBox.innerHTML = '<span class="rh-bk-cal-step">' + cal.step + '/' + cal.total +
+				'</span> Press any key on the keyboard for <b>' + esc(cal.target) + '</b>';
+		}
+		q('.rh-bk-cal-btn').textContent = cal ? 'Cancel' : 'Calibrate';
+		q('.rh-bk-cal-btn').classList.toggle('rh-bk-btn-cancel', !!cal);
+		q('.rh-bk-link-btn').classList.toggle('rh-bk-dim', !state.kc_ip);
+		q('.rh-bk-link-btn').title = state.kc_ip ?
+			'Point the forwarder at ' + state.kc_ip + ' to this server' :
+			'Set the Key Control IP in Settings → KEY CONTROL first';
 
 		var html = '';
 		if (!mapping.length) {
@@ -146,11 +239,11 @@
 					esc(m.label || ('S' + (m.seat + 1))) + '</span>' +
 					'<span class="rh-bk-name">' + esc(m.callsign || '—') + '</span>' +
 					(m.fixed ? '<span class="rh-bk-chip rh-bk-c-info" ' +
-						'title="Fixed seat override (Settings)">pinned</span>' : '');
+						'title="Fixed seat (calibrated / pinned in Settings)">pin</span>' : '');
 			}
 			html += '<div class="rh-bk-row"><span class="rh-bk-kb">KB' + (m.kb + 1) +
-				'</span>' + target +
-				'<span class="rh-bk-keys"><kbd>1</kbd>+ lap <kbd>2</kbd>− lap</span></div>';
+				'</span>' + target + lapDots(m) +
+				'<span class="rh-bk-keys"><kbd>1</kbd>+ <kbd>2</kbd>−</span></div>';
 		});
 		list.innerHTML = html;
 	}

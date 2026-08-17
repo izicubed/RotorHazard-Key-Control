@@ -3,10 +3,10 @@
     "name": "KEY CONTROL",
     "author": "izicubed",
     "author_uri": "https://github.com/izicubed",
-    "description": "Physical two-key USB button keyboards as per-pilot lap marshals. Each keyboard controls one seat of the running race: key 1 adds a lap manually (same as the Run page '+ Lap' button), key 2 deletes that seat's last recorded lap. Keyboards are read by a small forwarder script on a remote Raspberry Pi (or the timer itself) and forwarded to the server over Socket.IO. Keyboard N maps to the Nth occupied seat of the current heat by default (e.g. with pilots on R1, R3, R6, R8: keyboard 1 -> R1, keyboard 2 -> R3, ...), with per-keyboard fixed-seat overrides. Run-page panel shows live keyboard-to-pilot mapping and forwarder link status.",
+    "description": "Physical two-key USB button keyboards as per-pilot lap marshals, with two work modes. MANUAL: the timer's own RSSI laps are suppressed - every lap comes from the buttons (key 1 adds, key 2 deletes). SEMI: the timer counts laps as usual and key presses confirm them inside a +-threshold window (default 2 s, editable in the panel header) - green = confirmed, yellow = unconfirmed timer lap, blue = button press with no timer lap (a manual lap is added at the press), red = deleted (strikethrough time). Keyboards are read by a forwarder script on a remote Raspberry Pi and forwarded over Socket.IO; the plugin can re-point the forwarder at itself via the Key Control IP setting (forwarder control endpoint on port 8737, URL persisted). Keyboard N maps to the Nth occupied seat of the current heat (R1/R3/R6/R8 -> KB1..KB4), with fixed-seat overrides and a panel-driven Calibrate flow that binds keyboards to channels by pressing a key on each in turn. Works on RotorHazard 4.4+.",
     "documentation_uri": "https://github.com/izicubed/RotorHazard-Key-Control",
     "license": "RotorHazard",
     "license_uri": "https://github.com/RotorHazard/RotorHazard/blob/main/LICENSE",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "required_rhapi_version": "1.0"
 }

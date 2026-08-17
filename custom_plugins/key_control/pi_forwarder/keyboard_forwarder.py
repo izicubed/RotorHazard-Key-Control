@@ -111,6 +111,27 @@ def find_keyboards(name_filter=None):
     return sorted(found.values(), key=usb_sort_key)
 
 
+CONFIG_PATH = os.path.expanduser('~/key_control/forwarder_config.json')
+CTRL_PORT = 8737
+
+
+def load_config():
+    try:
+        with open(CONFIG_PATH) as f:
+            return json.load(f) or {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_config(cfg):
+    try:
+        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+        with open(CONFIG_PATH, 'w') as f:
+            json.dump(cfg, f, indent=2)
+    except OSError as ex:
+        log.warning('cannot save config %s: %s', CONFIG_PATH, ex)
+
+
 class Forwarder:
     def __init__(self, args):
         self.args = args
@@ -121,6 +142,10 @@ class Forwarder:
         self.readers = {}            # dev.path -> Thread
         self.lock = threading.Lock()
         self.host = pysocket.gethostname()
+        # server URL priority: saved config (set remotely by the plugin's
+        # "Link Key Control") > --server argument
+        self.server = load_config().get('server') or args.server
+        self.new_server = None       # set by the control endpoint
 
     # ------------------------------------------------------------- socket io
     def connect(self):
@@ -130,7 +155,7 @@ class Forwarder:
 
         @self.sio.event
         def connect():
-            log.info('connected to %s', self.args.server)
+            log.info('connected to %s', self.server)
             self.send_hello()
 
         @self.sio.event
@@ -139,12 +164,90 @@ class Forwarder:
 
         while True:
             try:
-                self.sio.connect(self.args.server,
+                self.sio.connect(self.server,
                                  transports=['websocket', 'polling'])
                 return
             except Exception as ex:
                 log.warning('connect failed (%s), retrying in 5s', ex)
                 time.sleep(5)
+                if self.new_server:  # re-pointed while unreachable
+                    self.server = self.new_server
+                    self.new_server = None
+
+    def set_server(self, url):
+        '''Control endpoint: persist a new server URL and reconnect.'''
+        save_config({'server': url})
+        self.new_server = url
+        log.info('re-pointing to %s', url)
+
+    def apply_new_server(self):
+        if not self.new_server:
+            return
+        url, self.new_server = self.new_server, None
+        self.server = url
+        try:
+            if self.sio and self.sio.connected:
+                self.sio.disconnect()
+        except Exception:
+            pass
+        self.connect()
+        self.send_hello()
+
+    # --------------------------------------------------------- control http
+    def start_ctrl_server(self):
+        import http.server
+
+        fwd = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def _json(self, code, obj):
+                body = json.dumps(obj).encode()
+                self.send_response(code)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                if self.path == '/status':
+                    self._json(200, {
+                        'host': fwd.host,
+                        'server': fwd.server,
+                        'connected': bool(fwd.sio and fwd.sio.connected),
+                        'devices': fwd.device_summary(),
+                    })
+                else:
+                    self._json(404, {'error': 'unknown path'})
+
+            def do_POST(self):
+                if self.path != '/server':
+                    self._json(404, {'error': 'unknown path'})
+                    return
+                try:
+                    length = int(self.headers.get('Content-Length') or 0)
+                    data = json.loads(self.rfile.read(length) or b'{}')
+                    url = str(data.get('url') or '')
+                except (ValueError, TypeError):
+                    self._json(400, {'error': 'bad json'})
+                    return
+                if not url.startswith('http://') and not url.startswith('https://'):
+                    self._json(400, {'error': 'url must be http(s)://host:port'})
+                    return
+                fwd.set_server(url)
+                self._json(200, {'ok': True, 'server': url})
+
+            def log_message(self, fmt, *a):
+                log.debug('ctrl: ' + fmt, *a)
+
+        try:
+            srv = http.server.ThreadingHTTPServer(('0.0.0.0', CTRL_PORT), Handler)
+        except OSError as ex:
+            # port busy (another forwarder instance) - endpoint is optional
+            log.warning('control endpoint unavailable on :%d (%s)', CTRL_PORT, ex)
+            return
+        threading.Thread(target=srv.serve_forever, daemon=True,
+                         name='ctrl-http').start()
+        log.info('control endpoint on :%d (/status, POST /server)', CTRL_PORT)
 
     def device_summary(self):
         with self.lock:
@@ -152,7 +255,8 @@ class Forwarder:
                     for i, d in enumerate(self.devices)]
 
     def payload(self):
-        return {'host': self.host, 'devices': self.device_summary()}
+        return {'host': self.host, 'devices': self.device_summary(),
+                'server': self.server, 'ctrl_port': CTRL_PORT}
 
     def send_hello(self):
         self.emit(EV_HELLO, self.payload())
@@ -230,11 +334,17 @@ class Forwarder:
 
     # ------------------------------------------------------------------- run
     def run(self):
+        self.start_ctrl_server()
         self.connect()
         self.rescan()
         last_beat = last_scan = 0.0
         while True:
             now = time.monotonic()
+            if self.new_server:
+                try:
+                    self.apply_new_server()
+                except Exception:
+                    log.exception('re-point failed')
             if now - last_beat >= HEARTBEAT_SEC:
                 self.emit(EV_HEARTBEAT, self.payload())
                 last_beat = now

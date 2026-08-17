@@ -91,6 +91,54 @@
 	min-height: 18px; box-sizing: content-box;
 	cursor: pointer; user-select: none;
 }
+/* Nothing in the header may be taller than that 18px row. RotorHazard's
+   global `button, select, input { min-height: 2em }` would otherwise size a
+   header control at 2x its own font-size and silently make this panel taller
+   than its neighbours. */
+#rh-bk .rh-bk-head button, #rh-bk .rh-bk-head select, #rh-bk .rh-bk-head input {
+	min-height: 0; height: 18px; line-height: 1;
+	box-sizing: border-box; padding-top: 0; padding-bottom: 0;
+}
+#rh-bk .rh-bk-head .rh-bk-seg { height: 18px; box-sizing: border-box; }
+#rh-bk .rh-bk-head .rh-bk-mode { height: auto; }
+
+/* Manual|Semi work-mode switch: a segmented pair, the selected mode is lit,
+   the other reads as a plain label (same idiom as the Auto Marshalling
+   school selector — this is a setting, not an action). */
+#rh-bk .rh-bk-seg {
+	display: flex; flex: 0 0 auto; align-items: stretch;
+	border: 1px solid var(--bk-kbd-border); border-radius: 9px;
+	overflow: hidden; line-height: 1.5;
+}
+#rh-bk .rh-bk-mode {
+	appearance: none; -webkit-appearance: none; cursor: pointer;
+	background: transparent; color: var(--bk-muted);
+	border: 0; padding: 1px 7px; font-size: 9px; font-weight: 700;
+	letter-spacing: 0.04em; text-transform: uppercase; font-family: inherit;
+}
+#rh-bk .rh-bk-mode + .rh-bk-mode { border-left: 1px solid var(--bk-kbd-border); }
+#rh-bk .rh-bk-mode:hover { color: var(--bk-fg); }
+#rh-bk .rh-bk-mode.rh-bk-mode-on {
+	background: var(--bk-chip-info-bg); color: var(--bk-chip-info-fg);
+}
+
+/* Semi confirmation window (seconds) in the header */
+#rh-bk .rh-bk-thr {
+	display: flex; align-items: center; gap: 1px; flex: 0 0 auto;
+	font-size: 9px; font-weight: 700; color: var(--bk-muted);
+	cursor: default;
+}
+#rh-bk .rh-bk-thr input {
+	width: 36px; background: var(--bk-kbd-bg); color: var(--bk-fg);
+	border: 1px solid var(--bk-kbd-border); border-radius: 4px;
+	font-size: 10px; font-family: inherit; text-align: center;
+	font-variant-numeric: tabular-nums; padding-left: 1px; padding-right: 1px;
+}
+#rh-bk .rh-bk-thr input::-webkit-outer-spin-button,
+#rh-bk .rh-bk-thr input::-webkit-inner-spin-button {
+	-webkit-appearance: none; margin: 0; }
+#rh-bk .rh-bk-thr input[type=number] { -moz-appearance: textfield; }
+#rh-bk .rh-bk-dim { opacity: 0.45; }
 #rh-bk .rh-bk-title { font-size: 10px; font-weight: 700;
 	letter-spacing: 0.03em; text-transform: uppercase; flex: 1 1 auto;
 	white-space: nowrap; }
@@ -138,5 +186,61 @@
 #rh-bk .rh-bk-empty { padding: 4px 9px 6px; color: var(--bk-muted);
 	font-size: 10px; }
 
+/* recent-lap dots: green confirmed / yellow unconfirmed / blue manual
+   (button-only) / red deleted or suppressed (hollow ring = suppressed) */
+#rh-bk {
+	--bk-lap-green: #3ddc84; --bk-lap-yellow: #f5c145;
+	--bk-lap-blue: #8fb7ff;  --bk-lap-red: #ff8a8a;
+}
+#rh-bk.rh-bk-light {
+	--bk-lap-green: #1e9e57; --bk-lap-yellow: #b97700;
+	--bk-lap-blue: #3b6fd4;  --bk-lap-red: #c53030;
+}
+#rh-bk .rh-bk-laps { display: inline-flex; align-items: center; gap: 3px;
+	margin-left: 4px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
+#rh-bk .rh-bk-dot { width: 7px; height: 7px; border-radius: 50%;
+	display: inline-block; flex: 0 0 auto; }
+#rh-bk .rh-bk-m-green { background: var(--bk-lap-green); }
+#rh-bk .rh-bk-m-yellow { background: var(--bk-lap-yellow); }
+#rh-bk .rh-bk-m-blue { background: var(--bk-lap-blue); }
+#rh-bk .rh-bk-m-red { background: var(--bk-lap-red); }
+#rh-bk .rh-bk-m-hollow { background: transparent;
+	border: 2px solid var(--bk-lap-red); width: 5px; height: 5px; }
+#rh-bk .rh-bk-lastlap { font-size: 10px; font-weight: 600; margin-left: 3px;
+	font-variant-numeric: tabular-nums; white-space: nowrap; flex: 0 0 auto; }
+#rh-bk .rh-bk-t-green { color: var(--bk-lap-green); }
+#rh-bk .rh-bk-t-yellow { color: var(--bk-lap-yellow); }
+#rh-bk .rh-bk-t-blue { color: var(--bk-lap-blue); }
+#rh-bk .rh-bk-t-red { color: var(--bk-lap-red); }
+#rh-bk .rh-bk-strike { text-decoration: line-through; }
+
+/* calibration banner */
+#rh-bk .rh-bk-cal { padding: 4px 9px; font-size: 10px;
+	color: var(--bk-chip-warn-fg); background: var(--bk-chip-warn-bg);
+	border-bottom: 1px solid var(--bk-edge); }
+#rh-bk .rh-bk-cal b { color: inherit; }
+#rh-bk .rh-bk-cal-step { font-weight: 700; font-variant-numeric: tabular-nums;
+	margin-right: 4px; }
+
+/* footer: actions + legend (Auto Marshalling foot metrics) */
+#rh-bk .rh-bk-foot { display: flex; align-items: center; gap: 6px;
+	padding: 5px 9px; border-top: 1px solid var(--bk-edge);
+	font-size: 10px; color: var(--bk-muted); flex-wrap: wrap; }
+#rh-bk.rh-bk-collapsed .rh-bk-foot,
+#rh-bk.rh-bk-collapsed .rh-bk-cal { display: none; }
+#rh-bk .rh-bk-btn {
+	appearance: none; -webkit-appearance: none; cursor: pointer;
+	background: var(--bk-kbd-bg); color: var(--bk-fg);
+	border: 1px solid var(--bk-kbd-border);
+	border-radius: 5px; padding: 2px 7px; font-size: 10px; font-weight: 600;
+	font-family: inherit; flex: 0 0 auto; min-height: 0; line-height: 1.4;
+}
+#rh-bk .rh-bk-btn:hover { filter: brightness(1.15); }
+#rh-bk .rh-bk-btn-cancel { background: var(--bk-chip-err-bg);
+	border-color: var(--bk-chip-err-fg); color: var(--bk-chip-err-fg); }
+#rh-bk .rh-bk-legend { margin-left: auto; display: inline-flex;
+	align-items: center; gap: 4px; white-space: nowrap; }
+#rh-bk .rh-bk-legend .rh-bk-dot { margin-left: 4px; width: 6px; height: 6px; }
+
 /* hide helper */
-#rh-bk.rh-bk-hidden { display: none !important; }
+#rh-bk.rh-bk-hidden, #rh-bk .rh-bk-hidden { display: none !important; }

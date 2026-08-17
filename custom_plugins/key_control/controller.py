@@ -2,23 +2,34 @@
 KEY CONTROL - controller.
 
 Receives key events from the Pi-side forwarder (pi_forwarder/keyboard_forwarder.py)
-over Socket.IO and turns them into lap actions on the running race:
+over Socket.IO and turns them into lap actions on the running race.
 
-  * button 'add'    -> manual lap for the mapped seat, identical to the Run
-                       page '+ Lap' button (interface simulate-lap, source MANUAL)
-  * button 'del'    -> delete the mapped seat's last non-deleted lap, identical
-                       to the Run page's lap 'x' button
+Two work modes (header switch, like the Auto Marshalling school selector):
 
-Mapping: keyboard N controls the Nth occupied seat (frequency set AND pilot
-assigned) of the current heat, in seat order - so with pilots on R1/R3/R6/R8,
-keyboard 1 is the R1 pilot, keyboard 2 the R3 pilot, and so on. A per-keyboard
-fixed-seat option overrides the automatic mapping when a keyboard must always
-drive one physical seat.
+  * MANUAL - RotorHazard's own RSSI passes are suppressed (deleted the moment
+    they are recorded); every counted lap comes from the buttons.
+  * SEMI   - RotorHazard counts laps as usual and the buttons CONFIRM them
+    inside a +-threshold window (set in the panel, default 2 s):
+       green  = timer lap confirmed by a key press within the window
+       yellow = timer lap with no confirming key press
+       blue   = key press with no timer lap inside the window -> a manual
+                lap is added at the moment the key was pressed
+       red    = lap removed with the delete key (strikethrough time)
+
+Buttons:  key 1 adds/confirms a lap, key 2 deletes the seat's last lap.
+
+Mapping: keyboard N controls the Nth occupied seat of the current heat, a
+per-keyboard fixed-seat option overrides, and the panel's Calibrate flow
+assigns keyboards to seats by pressing a key on each keyboard in turn.
 '''
 
 import json
 import logging
+import socket as pysocket
 from time import monotonic
+
+import gevent
+import requests
 
 from eventmanager import Evt
 from RHRace import RaceStatus
@@ -30,15 +41,22 @@ logger = logging.getLogger(__name__)
 PLUGIN_ID = 'key_control'
 
 # socket events (forwarder -> server)
-EV_HELLO = 'button_kb_hello'          # {host, devices:[{kb,name,phys}]}
+EV_HELLO = 'button_kb_hello'          # {host, devices:[{kb,name,phys}], server?, ctrl_port?}
 EV_HEARTBEAT = 'button_kb_heartbeat'  # same payload, every few seconds
 EV_KEY = 'button_kb_event'            # {kb:int 0-based, button:'add'|'del', ts:epoch_ms}
 # socket events (panel <-> server)
 EV_GET_STATE = 'button_kb_get_state'
 EV_STATE = 'button_kb_state'
+EV_SET_MODE = 'button_kb_set_mode'          # {mode:'manual'|'semi'}
+EV_SET_THRESHOLD = 'button_kb_set_threshold'  # {sec:float}
+EV_CALIBRATE = 'button_kb_calibrate'        # {action:'start'|'cancel'|'reset'}
+EV_LINK = 'button_kb_link'                  # {} -> contact forwarder at bk_kc_ip
 
 # options
 OPT_ENABLED = 'bk_enabled'
+OPT_MODE = 'bk_mode'                  # 'manual' | 'semi'
+OPT_THRESHOLD = 'bk_threshold'        # seconds, +- window for Semi confirmation
+OPT_KC_IP = 'bk_kc_ip'                # Key Control (forwarder) IP, optional
 OPT_KB_COUNT = 'bk_kb_count'
 OPT_NOTIFY = 'bk_notify'
 OPT_SPEAK = 'bk_speak'
@@ -46,17 +64,35 @@ OPT_DEL_WHEN_STOPPED = 'bk_del_when_stopped'
 OPT_THEME = 'bk_theme'
 OPT_SEAT_PREFIX = 'bk_seat_kb'  # bk_seat_kb1..bk_seat_kb8; 0 = automatic
 
+MODE_MANUAL = 'manual'
+MODE_SEMI = 'semi'
+
 MAX_KEYBOARDS = 8
 DEBOUNCE_SEC = 0.25       # ignore repeats faster than this per (kb, button)
 FORWARDER_TIMEOUT = 15    # heartbeat older than this -> link shown offline
+FORWARDER_CTRL_PORT = 8737
+OWN_LAP_WINDOW = 1.5      # s: a MANUAL-source lap this soon after our own
+                          # simulate-lap call is ours, not an external one
+CALIBRATION_TIMEOUT = 60  # s without a key press -> calibration cancelled
+FEED_LAPS = 8             # laps kept per seat in the panel feed
+
+# lap sources (BaseHardwareInterface.LAP_SOURCE_*)
+SRC_REALTIME = 0
+SRC_MANUAL = 1
 
 
 class ButtonKeyboardController:
     def __init__(self, rhapi):
         self._rhapi = rhapi
         self._last_key = {}        # (kb, button) -> monotonic of last accepted press
-        self._forwarder = None     # {'host':…, 'devices':[…]}
+        self._forwarder = None     # {'host':…, 'devices':[…], 'server':…}
         self._forwarder_seen = 0.0
+        # ---- semi/manual race state (reset every stage) ----
+        self._marks = {}           # (seat, lap_time_stamp_ms) -> 'green'|'yellow'|'blue'|'suppressed'
+        self._own_expect = {}      # seat -> [monotonic, ...] of our simulate-lap calls
+        self._pending = {}         # seat -> [{'ts': race_ms, 'mono': monotonic, 'consumed': bool}]
+        # ---- calibration ----
+        self._cal = None           # {'seats':[…], 'idx':int, 'used':set(kb), 'last': monotonic}
 
     # ------------------------------------------------------------------ setup
 
@@ -73,34 +109,56 @@ class ButtonKeyboardController:
             fields.register_option(UIField(**kw), PLUGIN_ID)
 
         opt(OPT_ENABLED, 'Enabled', UIFieldType.CHECKBOX, True,
-            'Master switch. When off, key presses from the forwarder are ignored.')
+            'Master switch. When off, key presses from the forwarder are ignored '
+            'and RotorHazard behaves as if the plugin were not installed.')
+        opt(OPT_MODE, 'Work mode', UIFieldType.SELECT, MODE_SEMI,
+            'Manual: RotorHazard\'s own RSSI laps are suppressed - every lap '
+            'comes from the buttons. Semi: the timer counts laps as usual and '
+            'key presses confirm them (green confirmed / yellow unconfirmed / '
+            'blue button-only / red deleted). Also switchable from the panel '
+            'header.', options=[
+                UIFieldSelectOption(MODE_SEMI, 'Semi (confirm timer laps)'),
+                UIFieldSelectOption(MODE_MANUAL, 'Manual (buttons only)')])
+        opt(OPT_THRESHOLD, 'Semi confirmation window (seconds)',
+            UIFieldType.TEXT, '2',
+            'A key press within this many seconds of a timer lap confirms it; '
+            'a press with no timer lap inside the window adds a manual lap at '
+            'the moment of the press. Editable in the panel header too.')
+        opt(OPT_KC_IP, 'Key Control IP', UIFieldType.TEXT, '',
+            'IP address of the Key Control box (the Pi running the keyboard '
+            'forwarder), e.g. 192.168.100.53. Used by "Link Key Control": the '
+            'server contacts the forwarder on port {} and points it at itself.'
+            .format(FORWARDER_CTRL_PORT))
         opt(OPT_KB_COUNT, 'Number of keyboards', UIFieldType.BASIC_INT, 4,
             'How many two-key keyboards the forwarder carries (1-8).')
         opt(OPT_NOTIFY, 'Show a notification on every button action',
             UIFieldType.CHECKBOX, True,
-            'Pop a priority message on all pages when a lap is added or deleted '
-            'from a button keyboard.')
+            'Pop a priority message on all pages when a lap is added, confirmed '
+            'or deleted from a button keyboard.')
         opt(OPT_SPEAK, 'Voice callout on every button action',
             UIFieldType.CHECKBOX, False,
-            'Speak "<callsign> lap added / lap deleted" through the audio callouts.')
+            'Speak "<callsign> lap added / confirmed / deleted" through the '
+            'audio callouts.')
         opt(OPT_DEL_WHEN_STOPPED, 'Allow deleting after the race is stopped',
             UIFieldType.CHECKBOX, True,
-            'When on, the delete key still works between race stop and save '
-            '(same window in which the Run page shows the lap x buttons). '
+            'When on, the delete key still works between race stop and save. '
             'Adding laps always requires a running race.')
         for i in range(1, MAX_KEYBOARDS + 1):
             opt('{}{}'.format(OPT_SEAT_PREFIX, i),
                 'Keyboard {} fixed seat (0 = automatic)'.format(i),
                 UIFieldType.BASIC_INT, 0,
                 '0: keyboard {n} controls the {n}. occupied seat of the current '
-                'heat. 1-8: always control that seat number, regardless of '
-                'which seats are occupied.'.format(n=i))
+                'heat. 1-8: always control that seat number. The panel\'s '
+                'Calibrate flow fills these in for you.'.format(n=i))
         opt(OPT_THEME, 'Panel theme', UIFieldType.SELECT, 'dark',
             'Colour scheme of the Run-page panel. Auto follows each viewer\'s '
             'browser/OS light-dark preference.', options=[
                 UIFieldSelectOption('dark', 'Dark'),
                 UIFieldSelectOption('light', 'Light'),
                 UIFieldSelectOption('auto', 'Auto (follow browser/OS)')])
+
+        ui.register_quickbutton(PLUGIN_ID, 'bk_link_btn', 'Link Key Control now',
+                                self._quick_link)
 
         # Run-page front-end loader (same pattern as Auto Marshalling: a tiny
         # markdown snippet whose <script> tag pulls the panel JS).
@@ -129,6 +187,19 @@ class ButtonKeyboardController:
             return int(float(self._opt(name, default)))
         except (TypeError, ValueError):
             return default
+
+    def _opt_float(self, name, default):
+        try:
+            return float(self._opt(name, default))
+        except (TypeError, ValueError):
+            return default
+
+    def _mode(self):
+        return MODE_MANUAL if self._opt(OPT_MODE, MODE_SEMI) == MODE_MANUAL \
+            else MODE_SEMI
+
+    def _threshold(self):
+        return max(0.2, min(30.0, self._opt_float(OPT_THRESHOLD, 2.0)))
 
     # ------------------------------------------------------------- rh access
 
@@ -194,6 +265,33 @@ class ButtonKeyboardController:
             pass
         return None
 
+    def _race_ms(self):
+        '''Milliseconds since race start (same scale as lap_time_stamp).'''
+        race = self._racecontext.race
+        if not race.start_time_monotonic:
+            return None
+        return (monotonic() - race.start_time_monotonic) * 1000.0
+
+    _delete_style = None  # cached: 'dict' (RH <= 4.4) or 'args' (newer)
+
+    def _delete_lap_compat(self, seat, lap_index):
+        '''RH 4.4 has delete_lap(data-dict); newer servers take
+        (node_index, lap_index). Detect once and call accordingly.'''
+        race = self._racecontext.race
+        if ButtonKeyboardController._delete_style is None:
+            import inspect
+            try:
+                first = next(iter(
+                    inspect.signature(race.delete_lap).parameters))
+            except (ValueError, TypeError, StopIteration):
+                first = 'data'
+            ButtonKeyboardController._delete_style = \
+                'dict' if first == 'data' else 'args'
+        if ButtonKeyboardController._delete_style == 'dict':
+            race.delete_lap({'node': seat, 'lap_index': lap_index})
+        else:
+            race.delete_lap(seat, lap_index)
+
     # -------------------------------------------------------------- messaging
 
     def _feedback(self, message, speak_text=None):
@@ -229,25 +327,100 @@ class ButtonKeyboardController:
             return
         self._last_key[(kb, button)] = now
 
+        # calibration consumes every key press
+        if self._cal:
+            self._cal_key(kb)
+            return
+
         seat, problem = self._seat_for_keyboard(kb)
         if seat is None:
-            self._feedback('Button KB{}: no seat mapped ({})'.format(kb + 1, problem))
+            self._feedback('KEY CONTROL KB{}: no seat mapped ({})'.format(kb + 1, problem))
             return
 
         if button == 'add':
-            self._add_lap(kb, seat)
+            self._add_pressed(kb, seat)
         else:
             self._delete_last_lap(kb, seat)
         self.broadcast_state()
 
-    def _add_lap(self, kb, seat):
+    # -------------------------------------------------- add-key press (modes)
+
+    def _add_pressed(self, kb, seat):
         race = self._racecontext.race
         if race.race_status != RaceStatus.RACING:
-            self._feedback('Button KB{}: race is not running - lap not added'
+            self._feedback('KEY CONTROL KB{}: race is not running - lap not added'
                            .format(kb + 1))
             return
         callsign = self._seat_callsign(seat) or self._seat_label(seat)
-        # identical to the Run page '+ Lap' button (server on_simulate_lap)
+
+        if self._mode() == MODE_MANUAL:
+            self._do_add_lap(seat, 0.0)
+            self._feedback('KEY CONTROL KB{}: lap added for {} ({})'
+                           .format(kb + 1, callsign, self._seat_label(seat)),
+                           speak_text='{} lap added'.format(callsign))
+            return
+
+        # ---- SEMI: confirm a recent unconfirmed timer lap, else start a
+        # pending window; when it expires with no timer lap, add manually.
+        press_ms = self._race_ms()
+        if press_ms is None:
+            return
+        thr_ms = self._threshold() * 1000.0
+
+        lap_ts = self._find_unconfirmed_lap(seat, press_ms, thr_ms)
+        if lap_ts is not None:
+            self._marks[(seat, lap_ts)] = 'green'
+            self._feedback('KEY CONTROL KB{}: lap confirmed for {} ({})'
+                           .format(kb + 1, callsign, self._seat_label(seat)),
+                           speak_text='{} lap confirmed'.format(callsign))
+            return
+
+        entry = {'ts': press_ms, 'mono': monotonic(), 'consumed': False}
+        self._pending.setdefault(seat, []).append(entry)
+        gevent.spawn(self._pending_expire, seat, entry, kb, callsign)
+
+    def _pending_expire(self, seat, entry, kb, callsign):
+        gevent.sleep(self._threshold())
+        if entry['consumed']:
+            return
+        entry['consumed'] = True
+        race = self._racecontext.race
+        if race.race_status != RaceStatus.RACING:
+            return
+        # no timer lap arrived inside the window: manual lap at press time
+        elapsed_ms = (monotonic() - entry['mono']) * 1000.0
+        self._do_add_lap(seat, elapsed_ms)
+        self._feedback('KEY CONTROL KB{}: manual lap for {} ({}) - no timer lap '
+                       'within {:g}s'.format(kb + 1, callsign,
+                                             self._seat_label(seat),
+                                             self._threshold()),
+                       speak_text='{} manual lap'.format(callsign))
+        self.broadcast_state()
+
+    def _find_unconfirmed_lap(self, seat, press_ms, thr_ms):
+        '''Newest non-deleted timer lap of this seat marked yellow within the
+        window before the press.'''
+        best = None
+        for (s, lap_ts), mark in self._marks.items():
+            if s != seat or mark != 'yellow':
+                continue
+            if abs(press_ms - lap_ts) <= thr_ms:
+                if best is None or lap_ts > best:
+                    best = lap_ts
+        if best is None:
+            return None
+        # skip if that lap got deleted meanwhile
+        for lap in (self._racecontext.race.node_laps or {}).get(seat) or []:
+            if lap.lap_time_stamp == best and lap.deleted:
+                return None
+        return best
+
+    def _do_add_lap(self, seat, elapsed_ms):
+        '''Add a manual lap through the interface (same as the Run page
+        '+ Lap' button), registering it as OURS so the lap-recorded hook can
+        tell it apart from the timer's own passes.'''
+        race = self._racecontext.race
+        self._own_expect.setdefault(seat, []).append(monotonic())
         try:
             self._racecontext.events.trigger(Evt.CROSSING_EXIT, {
                 'nodeIndex': seat,
@@ -255,40 +428,248 @@ class ButtonKeyboardController:
             })
         except Exception:
             logger.exception('CROSSING_EXIT trigger failed')
-        self._racecontext.interface.intf_simulate_lap(seat, 0)
-        logger.info('key_control: KB%d added lap, seat %d (%s)',
-                    kb + 1, seat + 1, callsign)
-        self._feedback('Button KB{}: lap added for {} ({})'
-                       .format(kb + 1, callsign, self._seat_label(seat)),
-                       speak_text='{} lap added'.format(callsign))
+        self._racecontext.interface.intf_simulate_lap(seat, elapsed_ms)
+        logger.info('key_control: added lap, seat %d (offset %.0f ms)',
+                    seat + 1, elapsed_ms)
+
+    # ------------------------------------------------------ lap-recorded hook
+
+    def on_lap_recorded(self, args=None):
+        '''Evt.RACE_LAP_RECORDED: classify the lap (ours / timer's), apply the
+        work mode.'''
+        if not args or not self._opt_bool(OPT_ENABLED, True):
+            return
+        lap = args.get('lap')
+        seat = args.get('node_index')
+        if lap is None or seat is None:
+            return
+        lap_ts = lap.lap_time_stamp
+
+        if self._is_own_lap(seat, lap):
+            self._marks[(seat, lap_ts)] = 'blue' \
+                if self._mode() == MODE_SEMI else 'blue'
+            self.broadcast_state()
+            return
+
+        if self._mode() == MODE_MANUAL:
+            # timer lap in Manual mode: suppress it on the spot
+            self._marks[(seat, lap_ts)] = 'suppressed'
+            gevent.spawn(self._suppress_lap, seat, lap_ts)
+            return
+
+        # ---- SEMI: timer lap - confirmed if a pending press is in window
+        thr_ms = self._threshold() * 1000.0
+        pending = self._pending.get(seat) or []
+        for entry in pending:
+            if not entry['consumed'] and abs(lap_ts - entry['ts']) <= thr_ms:
+                entry['consumed'] = True
+                self._marks[(seat, lap_ts)] = 'green'
+                self.broadcast_state()
+                return
+        self._marks[(seat, lap_ts)] = 'yellow'
+        self.broadcast_state()
+
+    def _is_own_lap(self, seat, lap):
+        '''A MANUAL-source lap right after our own simulate-lap call is ours.'''
+        if lap.source != SRC_MANUAL:
+            return False
+        expects = self._own_expect.get(seat) or []
+        now = monotonic()
+        for i, t in enumerate(expects):
+            if now - t <= OWN_LAP_WINDOW:
+                expects.pop(i)
+                return True
+        # drop stale expectations
+        self._own_expect[seat] = [t for t in expects if now - t <= OWN_LAP_WINDOW]
+        return False
+
+    def _suppress_lap(self, seat, lap_ts):
+        '''Manual mode: delete a timer-recorded lap (runs off the event hook
+        so the recording call stack finishes first).'''
+        gevent.sleep(0.05)
+        race = self._racecontext.race
+        laps = (race.node_laps or {}).get(seat) or []
+        for idx in range(len(laps) - 1, -1, -1):
+            lap = laps[idx]
+            if lap.lap_time_stamp == lap_ts and not lap.deleted:
+                self._delete_lap_compat(seat, idx)
+                callsign = self._seat_callsign(seat) or self._seat_label(seat)
+                logger.info('key_control: suppressed timer lap, seat %d (manual mode)',
+                            seat + 1)
+                self._feedback('KEY CONTROL: timer lap for {} suppressed (Manual mode)'
+                               .format(callsign))
+                break
+        self.broadcast_state()
+
+    # ------------------------------------------------------------- delete key
 
     def _delete_last_lap(self, kb, seat):
         race = self._racecontext.race
         allowed = (RaceStatus.RACING, RaceStatus.DONE) \
             if self._opt_bool(OPT_DEL_WHEN_STOPPED, True) else (RaceStatus.RACING,)
         if race.race_status not in allowed:
-            self._feedback('Button KB{}: race is not running - nothing deleted'
+            self._feedback('KEY CONTROL KB{}: race is not running - nothing deleted'
                            .format(kb + 1))
             return
         laps = (race.node_laps or {}).get(seat) or []
         last_index = None
         for i in range(len(laps) - 1, -1, -1):
-            if not laps[i].deleted:
+            if not laps[i].deleted and self._marks.get(
+                    (seat, laps[i].lap_time_stamp)) != 'suppressed':
                 last_index = i
                 break
         callsign = self._seat_callsign(seat) or self._seat_label(seat)
         if last_index is None:
-            self._feedback('Button KB{}: {} has no laps to delete'
+            self._feedback('KEY CONTROL KB{}: {} has no laps to delete'
                            .format(kb + 1, callsign))
             return
-        lap_number = laps[last_index].lap_number
-        race.delete_lap(seat, last_index)
+        lap = laps[last_index]
+        lap_number = lap.lap_number
+        self._marks[(seat, lap.lap_time_stamp)] = 'red'
+        self._delete_lap_compat(seat, last_index)
         logger.info('key_control: KB%d deleted lap idx %s (lap %s), seat %d (%s)',
                     kb + 1, last_index, lap_number, seat + 1, callsign)
         what = 'holeshot' if not lap_number else 'lap {}'.format(lap_number)
-        self._feedback('Button KB{}: deleted {} of {} ({})'
+        self._feedback('KEY CONTROL KB{}: deleted {} of {} ({})'
                        .format(kb + 1, what, callsign, self._seat_label(seat)),
                        speak_text='{} lap deleted'.format(callsign))
+
+    # ------------------------------------------------------------ calibration
+
+    def on_calibrate(self, data=None):
+        action = (data or {}).get('action')
+        if action == 'start':
+            seats = self._occupied_seats()
+            if not seats:
+                self._feedback('KEY CONTROL: no occupied seats to calibrate '
+                               '(assign pilots to the heat first)')
+                return
+            self._cal = {'seats': seats, 'idx': 0, 'used': set(),
+                         'last': monotonic()}
+            gevent.spawn(self._cal_watchdog, self._cal)
+            self._feedback('KEY CONTROL calibration: press any key on the '
+                           'keyboard for {}'.format(self._cal_target_text()))
+        elif action == 'cancel':
+            if self._cal:
+                self._cal = None
+                self._feedback('KEY CONTROL calibration cancelled')
+        elif action == 'reset':
+            for i in range(1, MAX_KEYBOARDS + 1):
+                self._rhapi.db.option_set('{}{}'.format(OPT_SEAT_PREFIX, i), 0)
+            self._cal = None
+            self._feedback('KEY CONTROL: mapping reset to automatic '
+                           '(keyboard N = Nth occupied seat)')
+        self.broadcast_state()
+
+    def _cal_target_text(self):
+        cal = self._cal
+        seat = cal['seats'][cal['idx']]
+        callsign = self._seat_callsign(seat)
+        return '{} ({})'.format(self._seat_label(seat),
+                                callsign or 'seat {}'.format(seat + 1))
+
+    def _cal_key(self, kb):
+        cal = self._cal
+        if not cal:
+            return
+        cal['last'] = monotonic()
+        if kb in cal['used']:
+            self._feedback('KEY CONTROL calibration: keyboard {} is already '
+                           'assigned - press a different one for {}'
+                           .format(kb + 1, self._cal_target_text()))
+            self.broadcast_state()
+            return
+        seat = cal['seats'][cal['idx']]
+        self._rhapi.db.option_set('{}{}'.format(OPT_SEAT_PREFIX, kb + 1), seat + 1)
+        cal['used'].add(kb)
+        cal['idx'] += 1
+        self._feedback('KEY CONTROL calibration: keyboard {} -> {}'
+                       .format(kb + 1, self._cal_target_text_for(seat)))
+        if cal['idx'] >= len(cal['seats']):
+            self._cal = None
+            self._feedback('KEY CONTROL calibration complete')
+        else:
+            self._feedback('KEY CONTROL calibration: press any key on the '
+                           'keyboard for {}'.format(self._cal_target_text()))
+        self.broadcast_state()
+
+    def _cal_target_text_for(self, seat):
+        callsign = self._seat_callsign(seat)
+        return '{} ({})'.format(self._seat_label(seat),
+                                callsign or 'seat {}'.format(seat + 1))
+
+    def _cal_watchdog(self, cal):
+        while self._cal is cal:
+            if monotonic() - cal['last'] > CALIBRATION_TIMEOUT:
+                self._cal = None
+                self._feedback('KEY CONTROL calibration timed out')
+                self.broadcast_state()
+                return
+            gevent.sleep(1)
+
+    # -------------------------------------------------------------- mode/thr
+
+    def on_set_mode(self, data=None):
+        mode = (data or {}).get('mode')
+        if mode in (MODE_MANUAL, MODE_SEMI):
+            self._rhapi.db.option_set(OPT_MODE, mode)
+            self._feedback('KEY CONTROL mode: {}'.format(
+                'Manual (buttons only)' if mode == MODE_MANUAL
+                else 'Semi (confirm timer laps)'))
+        self.broadcast_state()
+
+    def on_set_threshold(self, data=None):
+        try:
+            sec = float((data or {}).get('sec'))
+        except (TypeError, ValueError):
+            return
+        sec = max(0.2, min(30.0, sec))
+        self._rhapi.db.option_set(OPT_THRESHOLD, '{:g}'.format(sec))
+        self.broadcast_state()
+
+    # -------------------------------------------------------------- link (ip)
+
+    def _quick_link(self, _args=None):
+        self.on_link()
+
+    def on_link(self, _data=None):
+        ip = str(self._opt(OPT_KC_IP, '') or '').strip()
+        if not ip:
+            self._feedback('KEY CONTROL: set the Key Control IP first '
+                           '(Settings or panel)')
+            self.broadcast_state()
+            return
+        gevent.spawn(self._link_worker, ip)
+
+    def _link_worker(self, ip):
+        try:
+            own_ip = self._own_ip_toward(ip)
+            port = self._racecontext.serverconfig.get_item_int(
+                'GENERAL', 'HTTP_PORT') or 5000
+            url = 'http://{}:{}'.format(own_ip, port)
+            resp = requests.post(
+                'http://{}:{}/server'.format(ip, FORWARDER_CTRL_PORT),
+                json={'url': url}, timeout=5)
+            if resp.ok:
+                self._feedback('KEY CONTROL: forwarder at {} linked to {}'
+                               .format(ip, url))
+            else:
+                self._feedback('KEY CONTROL: forwarder at {} answered {}'
+                               .format(ip, resp.status_code))
+        except Exception as ex:
+            self._feedback('KEY CONTROL: cannot reach forwarder at {}:{} ({})'
+                           .format(ip, FORWARDER_CTRL_PORT,
+                                   ex.__class__.__name__))
+        self.broadcast_state()
+
+    @staticmethod
+    def _own_ip_toward(ip):
+        s = pysocket.socket(pysocket.AF_INET, pysocket.SOCK_DGRAM)
+        try:
+            s.connect((ip, FORWARDER_CTRL_PORT))
+            return s.getsockname()[0]
+        finally:
+            s.close()
 
     # ------------------------------------------------------ forwarder link io
 
@@ -309,6 +690,14 @@ class ButtonKeyboardController:
         self._forwarder_seen = monotonic()
         self.broadcast_state()
 
+    # ---------------------------------------------------------- race lifecycle
+
+    def on_race_reset(self, _args=None):
+        self._marks = {}
+        self._own_expect = {}
+        self._pending = {}
+        self.broadcast_state()
+
     # ------------------------------------------------------------ panel state
 
     def on_get_state(self, _data=None):
@@ -319,6 +708,29 @@ class ButtonKeyboardController:
             self._rhapi.ui.socket_broadcast(EV_STATE, self._state())
         except Exception:
             logger.exception('state broadcast failed')
+
+    def _lap_feed(self, seat):
+        '''Recent laps of a seat with their marks, for the panel dots.'''
+        laps = (self._racecontext.race.node_laps or {}).get(seat) or []
+        feed = []
+        for lap in laps:
+            # RH 4.4 marks deleted laps invalid+deleted; keep those visible
+            # (red/strikethrough). Skip only invalid laps that never counted.
+            if lap.invalid and not lap.deleted:
+                continue
+            mark = self._marks.get((seat, lap.lap_time_stamp))
+            if lap.deleted:
+                mark = 'red' if mark != 'suppressed' else 'suppressed'
+            elif mark is None:
+                mark = 'yellow' if self._mode() == MODE_SEMI else 'blue'
+            feed.append({
+                'n': lap.lap_number,
+                't': lap.lap_time_formatted,
+                'ts': lap.lap_time_stamp,
+                'mark': mark,
+                'deleted': bool(lap.deleted),
+            })
+        return feed[-FEED_LAPS:]
 
     def _state(self):
         race = self._racecontext.race
@@ -333,16 +745,30 @@ class ButtonKeyboardController:
                 'callsign': self._seat_callsign(seat) if seat is not None else None,
                 'fixed': fixed,
                 'problem': problem,
+                'laps': self._lap_feed(seat) if seat is not None else [],
             })
         age = monotonic() - self._forwarder_seen if self._forwarder_seen else None
+        cal = None
+        if self._cal:
+            cal = {
+                'active': True,
+                'step': self._cal['idx'] + 1,
+                'total': len(self._cal['seats']),
+                'target': self._cal_target_text(),
+            }
         return {
             'enabled': self._opt_bool(OPT_ENABLED, True),
+            'mode': self._mode(),
+            'threshold': self._threshold(),
             'race_status': race.race_status,
             'mapping': mapping,
+            'calibration': cal,
+            'kc_ip': str(self._opt(OPT_KC_IP, '') or ''),
             'forwarder': {
                 'online': age is not None and age < FORWARDER_TIMEOUT,
                 'age': round(age, 1) if age is not None else None,
                 'host': (self._forwarder or {}).get('host'),
+                'server': (self._forwarder or {}).get('server'),
                 'devices': (self._forwarder or {}).get('devices') or [],
             },
             'theme': self._opt(OPT_THEME, 'dark'),
