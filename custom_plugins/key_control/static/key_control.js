@@ -243,14 +243,43 @@
 			}
 			html += '<div class="rh-bk-row"><span class="rh-bk-kb">KB' + (m.kb + 1) +
 				'</span>' + target + lapDots(m) +
-				'<span class="rh-bk-keys"><kbd>1</kbd>+ <kbd>2</kbd>−</span></div>';
+				'<span class="rh-bk-live">' +
+				'<i class="rh-bk-act rh-bk-act-add" data-kb="' + m.kb + '" data-btn="add"' +
+				' title="key 1 — add / confirm lap"></i>' +
+				'<i class="rh-bk-act rh-bk-act-del" data-kb="' + m.kb + '" data-btn="del"' +
+				' title="key 2 — delete last lap"></i></span></div>';
 		});
 		list.innerHTML = html;
+		applyLit();
+	}
+
+	// ------------------------------------------------- live press indicators
+	// Server broadcasts `button_kb_press {kb, button}` the instant a key is
+	// accepted; the matching circle lights up for a moment. Lit state lives
+	// here (not in the DOM) so full re-renders can't wipe an active flash.
+	var LIT_MS = 400;
+	var lit = {};   // 'kb:btn' -> timestamp of last press
+
+	function applyLit() {
+		if (!panel) { return; }
+		var now = Date.now();
+		Array.prototype.forEach.call(panel.querySelectorAll('.rh-bk-act'), function (el2) {
+			var key = el2.getAttribute('data-kb') + ':' + el2.getAttribute('data-btn');
+			el2.classList.toggle('rh-bk-lit', now - (lit[key] || 0) < LIT_MS);
+		});
+	}
+
+	function onPress(p) {
+		if (!p || p.kb == null) { return; }
+		lit[p.kb + ':' + (p.button === 'del' ? 'del' : 'add')] = Date.now();
+		applyLit();
+		setTimeout(applyLit, LIT_MS + 30);
 	}
 
 	function boot() {
 		if (!onRunPage()) { return; }
 		socket = window.socket || io();
+		socket.on('button_kb_press', onPress);
 		socket.on('button_kb_state', function (s) {
 			state = s || {};
 			if (state.theme) { theme = state.theme; }

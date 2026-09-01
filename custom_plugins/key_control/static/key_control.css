@@ -174,15 +174,22 @@
 #rh-bk .rh-bk-none { flex: 1 1 auto; color: var(--bk-muted); font-size: 10px;
 	font-style: italic; white-space: nowrap; overflow: hidden;
 	text-overflow: ellipsis; }
-#rh-bk .rh-bk-keys { flex: 0 0 auto; margin-left: auto; color: var(--bk-muted);
-	font-size: 9px; white-space: nowrap; }
-#rh-bk .rh-bk-keys kbd {
-	display: inline-block; background: var(--bk-kbd-bg);
-	border: 1px solid var(--bk-kbd-border); border-bottom-width: 2px;
-	border-radius: 3px; padding: 0 3px; margin: 0 1px;
-	font-size: 8px; line-height: 1.4; color: var(--bk-kbd-fg);
-	font-family: inherit; font-variant-numeric: tabular-nums;
+/* live press indicators: green = key 1 (add/confirm), red = key 2 (delete).
+   Dim rings at rest; the matching circle lights up the moment the physical
+   button is pressed (server broadcast, class .rh-bk-lit for ~0.4 s). */
+#rh-bk .rh-bk-live { flex: 0 0 auto; margin-left: auto; display: inline-flex;
+	align-items: center; gap: 5px; }
+#rh-bk .rh-bk-act {
+	width: 9px; height: 9px; border-radius: 50%; display: inline-block;
+	background: transparent; box-sizing: border-box;
+	transition: background 0.12s ease, box-shadow 0.12s ease;
 }
+#rh-bk .rh-bk-act-add { border: 2px solid var(--bk-lap-green); opacity: 0.4; }
+#rh-bk .rh-bk-act-del { border: 2px solid var(--bk-lap-red); opacity: 0.4; }
+#rh-bk .rh-bk-act-add.rh-bk-lit { background: var(--bk-lap-green); opacity: 1;
+	box-shadow: 0 0 6px 2px var(--bk-lap-green); }
+#rh-bk .rh-bk-act-del.rh-bk-lit { background: var(--bk-lap-red); opacity: 1;
+	box-shadow: 0 0 6px 2px var(--bk-lap-red); }
 #rh-bk .rh-bk-empty { padding: 4px 9px 6px; color: var(--bk-muted);
 	font-size: 10px; }
 

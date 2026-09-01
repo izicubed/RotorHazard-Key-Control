@@ -51,6 +51,7 @@ EV_SET_MODE = 'button_kb_set_mode'          # {mode:'manual'|'semi'}
 EV_SET_THRESHOLD = 'button_kb_set_threshold'  # {sec:float}
 EV_CALIBRATE = 'button_kb_calibrate'        # {action:'start'|'cancel'|'reset'}
 EV_LINK = 'button_kb_link'                  # {} -> contact forwarder at bk_kc_ip
+EV_PRESS = 'button_kb_press'                # server -> panel: {kb, button} live flash
 
 # options
 OPT_ENABLED = 'bk_enabled'
@@ -132,9 +133,11 @@ class ButtonKeyboardController:
         opt(OPT_KB_COUNT, 'Number of keyboards', UIFieldType.BASIC_INT, 4,
             'How many two-key keyboards the forwarder carries (1-8).')
         opt(OPT_NOTIFY, 'Show a notification on every button action',
-            UIFieldType.CHECKBOX, True,
+            UIFieldType.CHECKBOX, False,
             'Pop a priority message on all pages when a lap is added, confirmed '
-            'or deleted from a button keyboard.')
+            'or deleted from a button keyboard. Off by default - the panel\'s '
+            'live press lights and lap dots carry the same information '
+            'without covering the screen.')
         opt(OPT_SPEAK, 'Voice callout on every button action',
             UIFieldType.CHECKBOX, False,
             'Speak "<callsign> lap added / confirmed / deleted" through the '
@@ -294,8 +297,8 @@ class ButtonKeyboardController:
 
     # -------------------------------------------------------------- messaging
 
-    def _feedback(self, message, speak_text=None):
-        if self._opt_bool(OPT_NOTIFY, True):
+    def _feedback(self, message, speak_text=None, force=False):
+        if force or self._opt_bool(OPT_NOTIFY, False):
             try:
                 self._rhapi.ui.message_notify(message)
             except Exception:
@@ -326,6 +329,12 @@ class ButtonKeyboardController:
         if now - self._last_key.get((kb, button), 0) < DEBOUNCE_SEC:
             return
         self._last_key[(kb, button)] = now
+
+        # live press indicator in the panel (lightweight, before any handling)
+        try:
+            self._rhapi.ui.socket_broadcast(EV_PRESS, {'kb': kb, 'button': button})
+        except Exception:
+            pass
 
         # calibration consumes every key press
         if self._cal:
@@ -542,23 +551,23 @@ class ButtonKeyboardController:
             seats = self._occupied_seats()
             if not seats:
                 self._feedback('KEY CONTROL: no occupied seats to calibrate '
-                               '(assign pilots to the heat first)')
+                               '(assign pilots to the heat first)', force=True)
                 return
             self._cal = {'seats': seats, 'idx': 0, 'used': set(),
                          'last': monotonic()}
             gevent.spawn(self._cal_watchdog, self._cal)
             self._feedback('KEY CONTROL calibration: press any key on the '
-                           'keyboard for {}'.format(self._cal_target_text()))
+                           'keyboard for {}'.format(self._cal_target_text()), force=True)
         elif action == 'cancel':
             if self._cal:
                 self._cal = None
-                self._feedback('KEY CONTROL calibration cancelled')
+                self._feedback('KEY CONTROL calibration cancelled', force=True)
         elif action == 'reset':
             for i in range(1, MAX_KEYBOARDS + 1):
                 self._rhapi.db.option_set('{}{}'.format(OPT_SEAT_PREFIX, i), 0)
             self._cal = None
             self._feedback('KEY CONTROL: mapping reset to automatic '
-                           '(keyboard N = Nth occupied seat)')
+                           '(keyboard N = Nth occupied seat)', force=True)
         self.broadcast_state()
 
     def _cal_target_text(self):
@@ -576,7 +585,7 @@ class ButtonKeyboardController:
         if kb in cal['used']:
             self._feedback('KEY CONTROL calibration: keyboard {} is already '
                            'assigned - press a different one for {}'
-                           .format(kb + 1, self._cal_target_text()))
+                           .format(kb + 1, self._cal_target_text()), force=True)
             self.broadcast_state()
             return
         seat = cal['seats'][cal['idx']]
@@ -584,13 +593,13 @@ class ButtonKeyboardController:
         cal['used'].add(kb)
         cal['idx'] += 1
         self._feedback('KEY CONTROL calibration: keyboard {} -> {}'
-                       .format(kb + 1, self._cal_target_text_for(seat)))
+                       .format(kb + 1, self._cal_target_text_for(seat)), force=True)
         if cal['idx'] >= len(cal['seats']):
             self._cal = None
-            self._feedback('KEY CONTROL calibration complete')
+            self._feedback('KEY CONTROL calibration complete', force=True)
         else:
             self._feedback('KEY CONTROL calibration: press any key on the '
-                           'keyboard for {}'.format(self._cal_target_text()))
+                           'keyboard for {}'.format(self._cal_target_text()), force=True)
         self.broadcast_state()
 
     def _cal_target_text_for(self, seat):
@@ -602,7 +611,7 @@ class ButtonKeyboardController:
         while self._cal is cal:
             if monotonic() - cal['last'] > CALIBRATION_TIMEOUT:
                 self._cal = None
-                self._feedback('KEY CONTROL calibration timed out')
+                self._feedback('KEY CONTROL calibration timed out', force=True)
                 self.broadcast_state()
                 return
             gevent.sleep(1)
