@@ -203,7 +203,9 @@ export default function JudgeClient({ token }: { token: string }) {
   if (!view) {
     return (
       <main className="page">
-        <h1>Connecting…</h1>
+        <h1>
+          Connecting<span className="gradient-text">…</span>
+        </h1>
         <p className="lede">Loading your pilot.</p>
       </main>
     );
@@ -217,33 +219,35 @@ export default function JudgeClient({ token }: { token: string }) {
   return (
     <main className="judge">
       <header className="judge-head">
+        <span className="seat-mark">{view.label || `S${view.seat + 1}`}</span>
         <div className="judge-pilot">
           <div className="judge-callsign">{view.callsign ?? `Seat ${view.seat + 1}`}</div>
           <div className="judge-sub">
-            {view.label}
-            {view.event ? ` · ${view.event}` : ''} · room {view.room}
+            {view.event || 'No heat selected'} · room {view.room}
           </div>
         </div>
-        <span className={`chip ${statusClass(offline, view)}`}>
+        <span className={`badge ${statusClass(offline, view)}`}>
           <i className="dot" aria-hidden="true" />
           {statusLabel(offline, view)}
         </span>
       </header>
 
       <section className="judge-body">
-        <div className="lap-label">Gate passes</div>
-        <div className="lap-count" aria-live="polite">
-          {view.laps}
-          {queued > 0 ? <span className="pending"> +{queued} sending</span> : null}
-        </div>
-        <div className="lap-times">
-          <div>
-            <div className="lap-label">Last</div>
-            <div className="lap-time-value">{view.lastLap ?? '—'}</div>
+        <div className="card count-card">
+          <div className="stat-label">Gate passes</div>
+          <div className="lap-count" aria-live="polite">
+            <span className="gradient-text">{view.laps}</span>
+            {queued > 0 && <span className="pending">+{queued} sending</span>}
           </div>
-          <div>
-            <div className="lap-label">Best</div>
-            <div className="lap-time-value">{view.bestLap ?? '—'}</div>
+          <div className="lap-times">
+            <div>
+              <div className="stat-label">Last lap</div>
+              <div className="lap-time-value">{view.lastLap ?? '—'}</div>
+            </div>
+            <div>
+              <div className="stat-label">Best lap</div>
+              <div className="lap-time-value">{view.bestLap ?? '—'}</div>
+            </div>
           </div>
         </div>
         <p className={`judge-note ${racing ? '' : 'judge-note-warn'}`}>{hint(view, offline)}</p>
@@ -274,9 +278,9 @@ export default function JudgeClient({ token }: { token: string }) {
 }
 
 function statusClass(offline: boolean, view: View) {
-  if (offline) return 'chip-down';
-  if (!view.timerOnline) return 'chip-warn';
-  return view.raceStatus === RACING ? 'chip-live' : '';
+  if (offline) return 'badge-down';
+  if (!view.timerOnline) return 'badge-warn';
+  return view.raceStatus === RACING ? 'badge-live' : '';
 }
 
 function statusLabel(offline: boolean, view: View) {

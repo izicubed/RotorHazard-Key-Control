@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from 'next';
+import { Inter } from 'next/font/google';
 import './globals.css';
+
+// Self-hosted by Next, so a judge on a weak signal never waits on a font CDN.
+const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
 
 export const metadata: Metadata = {
   title: 'KEY CONTROL Judge',
@@ -14,16 +18,16 @@ export const viewport: Viewport = {
   // Pinch-zoom stays available on purpose: never trap a judge in a layout
   // their eyes cannot read.
   viewportFit: 'cover',
-  themeColor: [
-    { media: '(prefers-color-scheme: dark)', color: '#080b12' },
-    { media: '(prefers-color-scheme: light)', color: '#f5f7fb' },
-  ],
+  themeColor: '#0b0f1a',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" className={inter.variable}>
+      <body>
+        <div className="glow" aria-hidden="true" />
+        {children}
+      </body>
     </html>
   );
 }

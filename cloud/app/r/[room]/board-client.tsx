@@ -2,6 +2,15 @@
 
 import { useEffect, useState } from 'react';
 
+type Seat = {
+  seat: number;
+  label: string;
+  callsign: string | null;
+  laps: number;
+  lastLap: string | null;
+  bestLap: string | null;
+};
+
 type Board = {
   ok: true;
   room: string;
@@ -9,8 +18,10 @@ type Board = {
   mode: 'manual' | 'semi';
   raceStatus: number;
   timerOnline: boolean;
-  seats: { seat: number; label: string; callsign: string | null; laps: number; lastLap: string | null; bestLap: string | null }[];
+  seats: Seat[];
 };
+
+const RACING = 1;
 
 export default function BoardClient({ room }: { room: string }) {
   const [board, setBoard] = useState<Board | null>(null);
@@ -43,9 +54,11 @@ export default function BoardClient({ room }: { room: string }) {
   if (missing) {
     return (
       <main className="page">
-        <h1>Room {room}</h1>
+        <h1>
+          Room <span className="gradient-text">{room}</span>
+        </h1>
         <p className="lede">
-          No RotorHazard server is using this room code. Turn on Cloud judging in the KEY CONTROL
+          No RotorHazard server is using this room code. Turn on Cloud judges in the KEY CONTROL
           panel, then reload.
         </p>
       </main>
@@ -55,35 +68,63 @@ export default function BoardClient({ room }: { room: string }) {
   if (!board) {
     return (
       <main className="page">
-        <h1>Room {room}</h1>
+        <h1>
+          Room <span className="gradient-text">{room}</span>
+        </h1>
         <p className="lede">Loading…</p>
       </main>
     );
   }
 
+  const badge = board.timerOnline
+    ? board.raceStatus === RACING
+      ? 'badge-live'
+      : ''
+    : 'badge-down';
+
   return (
     <main className="page">
-      <h1>Room {board.room}</h1>
-      <p className="lede">
-        {board.event || 'No heat selected'} · {board.mode === 'manual' ? 'Manual' : 'Semi'} mode ·{' '}
-        {board.timerOnline ? statusText(board.raceStatus) : 'timer offline'}
-      </p>
+      <div className="board-head">
+        <div className="grow">
+          <h1>
+            Room <span className="gradient-text">{board.room}</span>
+          </h1>
+          <p className="lede" style={{ marginBottom: 0 }}>
+            {board.event || 'No heat selected'} · {board.mode === 'manual' ? 'Manual' : 'Semi'} mode
+          </p>
+        </div>
+        <span className={`badge ${badge}`}>
+          <i className="dot" aria-hidden="true" />
+          {board.timerOnline ? statusText(board.raceStatus) : 'Timer offline'}
+        </span>
+      </div>
+
       <div className="card">
-        {board.seats.length === 0 && <p className="muted">No occupied seats in this heat.</p>}
+        {board.seats.length === 0 && (
+          <p className="muted" style={{ margin: 0 }}>
+            No occupied seats in this heat.
+          </p>
+        )}
         {board.seats.map((s) => (
           <div className="seat-row" key={s.seat}>
-            <span className="chip">{s.label}</span>
+            <span className="seat-mark">{s.label || `S${s.seat + 1}`}</span>
             <div className="grow">
-              <div style={{ fontWeight: 600 }}>{s.callsign ?? `Seat ${s.seat + 1}`}</div>
-              <div className="muted">
+              <div className="name">{s.callsign ?? `Seat ${s.seat + 1}`}</div>
+              <div className="sub">
                 last {s.lastLap ?? '—'} · best {s.bestLap ?? '—'}
               </div>
             </div>
-            <span className="num">{s.laps}</span>
+            <div>
+              <div className="seat-count">{s.laps}</div>
+              <div className="stat-label" style={{ textAlign: 'right' }}>
+                passes
+              </div>
+            </div>
           </div>
         ))}
       </div>
-      <p className="muted">
+
+      <p className="footnote">
         Read-only. Judge links are handed out from the KEY CONTROL panel on the timer.
       </p>
     </main>
@@ -91,5 +132,5 @@ export default function BoardClient({ room }: { room: string }) {
 }
 
 function statusText(status: number) {
-  return ['ready', 'racing', 'race over', 'stopped'][status] ?? 'unknown';
+  return ['Ready', 'Racing', 'Race over', 'Stopped'][status] ?? 'Unknown';
 }
