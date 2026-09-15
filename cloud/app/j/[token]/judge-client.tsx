@@ -106,6 +106,10 @@ export default function JudgeClient({ token }: { token: string }) {
 
   const press = useCallback(
     (button: 'add' | 'del') => {
+      // The same test the button's disabled state uses. A disabled button
+      // still receives pointerdown in every browser, so without this a tap on
+      // a greyed-out action would queue a command the timer then refuses.
+      if (!view || !allows(view, button)) return;
       // The tap time is captured here, before any network work, and travels
       // with the command - relay latency never moves the lap time.
       const entry: Press = { button, at: performance.now() };
@@ -229,7 +233,6 @@ export default function JudgeClient({ token }: { token: string }) {
   const offline = error === 'offline';
   const queued = outbox.length;
   const racing = view.raceStatus === RACING;
-  const canDelete = racing || view.raceStatus === DONE;
 
   return (
     <main className="judge">
@@ -286,7 +289,7 @@ export default function JudgeClient({ token }: { token: string }) {
           className={`action action-add ${flash === 'add' ? 'action-flash' : ''}`}
           onPointerDown={() => onPointer('add')}
           onClick={() => onClick('add')}
-          disabled={!racing}
+          disabled={!allows(view, 'add')}
         >
           <span className="action-icon">
             <CheckIcon />
@@ -301,7 +304,7 @@ export default function JudgeClient({ token }: { token: string }) {
           className={`action action-del ${flash === 'del' ? 'action-flash' : ''}`}
           onPointerDown={() => onPointer('del')}
           onClick={() => onClick('del')}
-          disabled={!canDelete || view.laps === 0}
+          disabled={!allows(view, 'del')}
         >
           <span className="action-icon">
             <MinusIcon />
@@ -314,6 +317,13 @@ export default function JudgeClient({ token }: { token: string }) {
       </div>
     </main>
   );
+}
+
+/** Adding needs a running race; removing also works between stop and save,
+ *  and only while the pilot has a lap to lose. */
+function allows(view: View, button: 'add' | 'del'): boolean {
+  if (button === 'add') return view.raceStatus === RACING;
+  return (view.raceStatus === RACING || view.raceStatus === DONE) && view.laps > 0;
 }
 
 function CheckIcon() {

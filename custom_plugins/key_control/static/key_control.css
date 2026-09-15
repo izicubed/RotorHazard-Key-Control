@@ -74,7 +74,7 @@
 #rh-plugin-dock > #rh-bk.rh-bk-collapsed { align-self: flex-start; }
 
 #rh-bk {
-	display: block; width: 100%; max-width: 520px; margin: 7px auto;
+	display: block; position: relative; width: 100%; max-width: 520px; margin: 7px auto;
 	box-sizing: border-box; background: var(--bk-bg);
 	border: 1px solid var(--bk-border);
 	border-radius: 8px; box-shadow: var(--bk-shadow);
@@ -273,6 +273,20 @@
 	font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
 	color: var(--bk-muted); }
 #rh-bk .rh-bk-cloud-link.rh-bk-copied .rh-bk-copy { color: var(--bk-chip-ok-fg); }
+
+/* judge-link QR: a thumbnail per row, click to fill the panel */
+#rh-bk .rh-bk-qr { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 3px;
+	background: #fff; padding: 1px; cursor: zoom-in; display: block; }
+#rh-bk .rh-bk-qrbox { position: absolute; inset: 0; z-index: 5; cursor: zoom-out;
+	display: flex; align-items: center; justify-content: center;
+	background: var(--bk-bg); border-radius: 8px; }
+#rh-bk .rh-bk-qrbox-inner { text-align: center; padding: 10px; }
+#rh-bk .rh-bk-qrbox img { width: 190px; height: 190px; background: #fff;
+	padding: 6px; border-radius: 6px; display: block; margin: 0 auto 6px; }
+#rh-bk .rh-bk-qrbox-who { font-size: 12px; font-weight: 700; color: var(--bk-fg); }
+#rh-bk .rh-bk-qrbox-url { font-size: 9px; color: var(--bk-soft); margin-top: 2px;
+	font-family: ui-monospace, Menlo, Consolas, monospace; word-break: break-all; }
+#rh-bk .rh-bk-qrbox-hint { font-size: 9px; color: var(--bk-muted); margin-top: 6px; }
 
 /* section switches: which halves of the plugin this event actually uses */
 #rh-bk .rh-bk-sections { display: flex; align-items: center; gap: 6px;

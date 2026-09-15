@@ -152,7 +152,9 @@
 		});
 		panel.querySelector('.rh-bk-cloud-links').addEventListener('click', function (e) {
 			var row = e.target.closest('.rh-bk-cloud-link');
-			if (row) { copyLink(row); }
+			if (!row) { return; }
+			if (e.target.classList.contains('rh-bk-qr')) { showQr(row); }
+			else { copyLink(row); }
 		});
 		d.appendChild(panel);
 		return panel;
@@ -190,6 +192,23 @@
 		ta.select();
 		try { document.execCommand('copy'); done(); } catch (e) { window.prompt('Copy this link:', url); }
 		document.body.removeChild(ta);
+	}
+
+	// A QR big enough to scan from across a table, over the whole panel.
+	function showQr(row) {
+		var box = panel.querySelector('.rh-bk-qrbox');
+		if (!box) {
+			box = el('div', 'rh-bk-qrbox');
+			box.addEventListener('click', function () { box.classList.add('rh-bk-hidden'); });
+			panel.appendChild(box);
+		}
+		box.innerHTML = '<div class="rh-bk-qrbox-inner">' +
+			'<img src="' + esc(row.getAttribute('data-qr')) + '" alt="Judge link QR code">' +
+			'<div class="rh-bk-qrbox-who">' + esc(row.getAttribute('data-who')) + '</div>' +
+			'<div class="rh-bk-qrbox-url">' + esc(row.getAttribute('data-url')) + '</div>' +
+			'<div class="rh-bk-qrbox-hint">Scan with the judge’s phone · click to close</div>' +
+			'</div>';
+		box.classList.remove('rh-bk-hidden');
 	}
 
 	function renderSections() {
@@ -242,7 +261,13 @@
 		var html = '';
 		rows.forEach(function (r) {
 			html += '<div class="rh-bk-cloud-link" data-url="' + esc(r.url) +
+				'" data-qr="' + esc(r.qr || '') +
+				'" data-who="' + esc((r.callsign || '') + ' ' + (r.label || '')) +
 				'" title="Click to copy this judge link">' +
+				(r.qr ? '<img class="rh-bk-qr" src="' + esc(r.qr) +
+					'" alt="QR code for ' + esc(r.callsign || r.label) +
+					'" title="Scan with the judge’s phone — click to enlarge" ' +
+					'loading="lazy" width="34" height="34">' : '') +
 				'<span class="rh-bk-seat">' + esc(r.label) + '</span>' +
 				'<span class="rh-bk-name">' + esc(r.callsign || '—') + '</span>' +
 				'<span class="rh-bk-url">' + esc(r.url) + '</span>' +

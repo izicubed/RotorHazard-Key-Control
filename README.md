@@ -90,6 +90,9 @@ heats change and the pilot on that channel changes with them.
   and up on an open one. It ticks on the phone between updates and freezes
   where the race stopped. Its colour is the race state: amber on the line
   while staging, green once the race is on, grey otherwise.
+* Every link carries a **QR code** in the panel. Click the thumbnail to fill
+  the panel with a large one for the judge to scan off your screen; click the
+  row itself to copy the link instead.
 * **New room** (panel, or Settings → *New cloud room code*) issues a fresh
   code and invalidates every link handed out so far.
 * The read-only board at `/r/<room code>` shows every seat at once, for the

@@ -128,11 +128,15 @@ class CloudRelay:
             return []
         links = []
         for seat in self._ctl.cloud_seats():
+            token = self._token_for(seat['seat'])
             links.append({
                 'seat': seat['seat'],
                 'label': seat['label'],
                 'callsign': seat['callsign'],
-                'url': '{}/j/{}'.format(self.base_url, self._token_for(seat['seat'])),
+                'url': '{}/j/{}'.format(self.base_url, token),
+                # the same link as a QR image, for a judge to scan off the
+                # race director's screen
+                'qr': '{}/qr/{}'.format(self.base_url, token),
             })
         return links
 
