@@ -154,3 +154,16 @@ keycodes and pass them via `--add-keys` / `--del-keys`.
 * All marks are per-race and reset when a race is staged or laps discarded.
 * A judge link only ever reaches its own seat; the room code alone grants no
   control, and the read-only board never carries judge tokens.
+
+## Working on this repo
+
+The code graph used for navigation is not committed; rebuild it locally (no
+API key, fully offline) with:
+
+```bash
+pip install graphifyy
+graphify extract . --code-only && graphify cluster-only . --no-label
+```
+
+`graphify-out/GRAPH_REPORT.md` then lists the hubs and how the plugin, the
+relay and the Pi forwarder connect.
