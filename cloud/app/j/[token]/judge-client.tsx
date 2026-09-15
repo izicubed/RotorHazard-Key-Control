@@ -35,6 +35,7 @@ export default function JudgeClient({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
   const [outbox, setOutbox] = useState<Press[]>([]);
   const [flash, setFlash] = useState<'add' | 'del' | null>(null);
+  const [pendingAge, setPendingAge] = useState(0);
 
   // Presses are held here until the timer's own lap count moves, so the judge
   // always sees whether the tap has landed.
@@ -171,6 +172,19 @@ export default function JudgeClient({ token }: { token: string }) {
     };
   }, [refresh, flush, view?.raceStatus]);
 
+  /* ---- how long the oldest tap has been waiting to land ---- */
+  useEffect(() => {
+    if (outbox.length === 0) {
+      setPendingAge(0);
+      return;
+    }
+    const oldest = outbox[0].at;
+    const tick = () => setPendingAge(Math.floor((performance.now() - oldest) / 1000));
+    tick();
+    const id = window.setInterval(tick, 500);
+    return () => window.clearInterval(id);
+  }, [outbox]);
+
   /* ---- keep the screen alive while judging ---- */
   useEffect(() => {
     let lock: WakeLockSentinel | null = null;
@@ -241,9 +255,16 @@ export default function JudgeClient({ token }: { token: string }) {
       <section className="judge-body">
         <div className="card count-card">
           <div className="stat-label">Gate passes</div>
-          <div className="lap-count" aria-live="polite">
-            <span className="gradient-text">{view.laps}</span>
-            {queued > 0 && <span className="pending">+{queued} sending</span>}
+          <div className="lap-count gradient-text" aria-live="polite">
+            {view.laps}
+          </div>
+          <div className="pending-slot">
+            {queued > 0 && (
+              <span className="pending" role="status" aria-live="polite">
+                <i className="pending-dot" aria-hidden="true" />+{queued} sending
+                {pendingAge > 0 && <span className="pending-age">{pendingAge}s</span>}
+              </span>
+            )}
           </div>
           <div className="lap-times">
             <div>
