@@ -277,8 +277,12 @@
 #rh-bk .rh-bk-cloud-link .rh-bk-qrbtn:hover { color: var(--bk-spark); }
 #rh-bk .rh-bk-cloud-link .rh-bk-copy { flex: 0 0 auto; font-size: 9px;
 	font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
-	color: var(--bk-muted); }
-#rh-bk .rh-bk-cloud-link.rh-bk-copied .rh-bk-copy { color: var(--bk-chip-ok-fg); }
+	color: var(--bk-muted); cursor: pointer; }
+/* The whole row copies, so hovering anywhere in it lights the label. */
+#rh-bk .rh-bk-cloud-link:hover .rh-bk-copy { color: var(--bk-spark); }
+/* Confirmation outranks the hover it was clicked with. */
+#rh-bk .rh-bk-cloud-link.rh-bk-copied .rh-bk-copy,
+#rh-bk .rh-bk-cloud-link.rh-bk-copied:hover .rh-bk-copy { color: var(--bk-chip-ok-fg); }
 
 /* judge-link QR: a small "QR" control per row that fills the panel */
 #rh-bk .rh-bk-qrbox { position: absolute; inset: 0; z-index: 5; cursor: zoom-out;
