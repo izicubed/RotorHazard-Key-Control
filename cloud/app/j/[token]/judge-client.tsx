@@ -36,6 +36,7 @@ export default function JudgeClient({ token }: { token: string }) {
   const [outbox, setOutbox] = useState<Press[]>([]);
   const [flash, setFlash] = useState<'add' | 'del' | null>(null);
   const [pendingAge, setPendingAge] = useState(0);
+  const [ping, setPing] = useState<number | null>(null);
 
   // Presses are held here until the timer's own lap count moves, so the judge
   // always sees whether the tap has landed.
@@ -46,6 +47,7 @@ export default function JudgeClient({ token }: { token: string }) {
   const lastPointer = useRef(0);
 
   const refresh = useCallback(async () => {
+    const started = performance.now();
     try {
       const res = await fetch(`/api/judge/${token}`, { cache: 'no-store' });
       if (res.status === 404) {
@@ -54,9 +56,12 @@ export default function JudgeClient({ token }: { token: string }) {
       }
       if (!res.ok) throw new Error(String(res.status));
       applyView(await res.json());
+      // The round trip of the poll is the judge's own link quality.
+      setPing(Math.round(performance.now() - started));
       setError(null);
     } catch {
       setError('offline');
+      setPing(null);
     }
   }, [token]);
 
@@ -299,24 +304,55 @@ export default function JudgeClient({ token }: { token: string }) {
             <span className="action-hint">at the gate</span>
           </span>
         </button>
-        <button
-          type="button"
-          className={`action action-del ${flash === 'del' ? 'action-flash' : ''}`}
-          onPointerDown={() => onPointer('del')}
-          onClick={() => onClick('del')}
-          disabled={!allows(view, 'del')}
-        >
-          <span className="action-icon">
-            <MinusIcon />
-          </span>
-          <span className="action-text">
-            <span className="action-title">Remove Lap</span>
-            <span className="action-hint">undo the last</span>
-          </span>
-        </button>
+        <div className="judge-footrow">
+          <button
+            type="button"
+            className={`action action-del ${flash === 'del' ? 'action-flash' : ''}`}
+            onPointerDown={() => onPointer('del')}
+            onClick={() => onClick('del')}
+            disabled={!allows(view, 'del')}
+          >
+            <span className="action-icon">
+              <MinusIcon />
+            </span>
+            <span className="action-text">
+              <span className="action-title">Remove Lap</span>
+              <span className="action-hint">undo the last</span>
+            </span>
+          </button>
+
+          <div className="judge-tech">
+            <div className={`tech-status ${techTone(offline, view)}`}>
+              <i className="dot" aria-hidden="true" />
+              {techLabel(offline, view)}
+            </div>
+            <div className="tech-row">
+              <span>Ping</span>
+              <span className="tech-value">{ping == null ? '—' : `${ping} ms`}</span>
+            </div>
+            <div className="tech-row">
+              <span>Timer</span>
+              <span className="tech-value">
+                {view.timerOnline ? 'live' : `${view.timerAge}s ago`}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   );
+}
+
+function techTone(offline: boolean, view: View) {
+  if (offline) return 'tech-down';
+  if (!view.timerOnline) return 'tech-warn';
+  return 'tech-ok';
+}
+
+function techLabel(offline: boolean, view: View) {
+  if (offline) return 'No signal';
+  if (!view.timerOnline) return 'Timer lost';
+  return 'Connected';
 }
 
 /** Adding needs a running race; removing also works between stop and save,

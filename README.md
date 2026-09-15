@@ -100,6 +100,9 @@ heats change and the pilot on that channel changes with them.
   race director's own screen.
 * Taps made while the phone has no signal are kept on the phone and sent when
   it comes back, still carrying the time they were made.
+* A readout beside **Remove Lap** shows the link the judge actually has:
+  connection state, the round trip of the last poll, and how long ago the
+  timer was heard from.
 
 ### Why a late tap still lands on the right second
 
