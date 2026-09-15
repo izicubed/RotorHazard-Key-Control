@@ -250,7 +250,18 @@ button {
   white-space: nowrap;
 }
 
+/* Colour is the state: on the line, then on the course. */
 .race-clock-idle { color: var(--fg-muted); }
+
+.race-clock-staging {
+  color: var(--warning);
+  text-shadow: 0 0 24px rgb(245 158 11 / 0.35);
+}
+
+.race-clock-racing {
+  color: var(--positive);
+  text-shadow: 0 0 24px rgb(34 197 94 / 0.35);
+}
 
 .race-mode {
   justify-self: end;

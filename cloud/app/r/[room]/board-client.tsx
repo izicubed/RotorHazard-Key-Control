@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { RACING, RaceBar, statusText } from '../../race-clock';
+import { RaceBar, badgeTone, statusText } from '../../race-clock';
 
 type Seat = {
   seat: number;
@@ -77,10 +77,8 @@ export default function BoardClient({ room }: { room: string }) {
     );
   }
 
-  const badge: '' | 'badge-live' | 'badge-down' = board.timerOnline
-    ? board.raceStatus === RACING
-      ? 'badge-live'
-      : ''
+  const badge: '' | 'badge-live' | 'badge-warn' | 'badge-down' = board.timerOnline
+    ? badgeTone(board.raceStatus)
     : 'badge-down';
 
   return (

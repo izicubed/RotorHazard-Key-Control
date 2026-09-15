@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DONE, RACING, RaceBar, statusText } from '../../race-clock';
+import { DONE, RACING, STAGING, RaceBar, badgeTone, statusText } from '../../race-clock';
 
 type View = {
   ok: true;
@@ -150,7 +150,10 @@ export default function JudgeClient({ token }: { token: string }) {
       await refresh();
       void flush();
       const hidden = document.visibilityState === 'hidden';
-      const delay = hidden ? POLL_HIDDEN : view?.raceStatus === RACING ? POLL_RACING : POLL_IDLE;
+      // Staging is short: poll it at racing speed so the clock turns green
+      // the moment the race actually starts.
+      const live = view?.raceStatus === RACING || view?.raceStatus === STAGING;
+      const delay = hidden ? POLL_HIDDEN : live ? POLL_RACING : POLL_IDLE;
       timer = window.setTimeout(tick, delay);
     };
     void tick();
@@ -311,7 +314,7 @@ function MinusIcon() {
 function statusClass(offline: boolean, view: View): '' | 'badge-live' | 'badge-warn' | 'badge-down' {
   if (offline) return 'badge-down';
   if (!view.timerOnline) return 'badge-warn';
-  return view.raceStatus === RACING ? 'badge-live' : '';
+  return badgeTone(view.raceStatus);
 }
 
 function statusLabel(offline: boolean, view: View) {
