@@ -391,9 +391,10 @@ button {
 
 .judge-actions {
   display: grid;
-  /* Add Lap is the button of the race; Remove is the rare correction. */
-  grid-template-columns: 3fr 2fr;
-  gap: var(--space-3);
+  grid-template-columns: 1fr 1fr;
+  /* A wide channel between the two, so a thumb aiming at Add cannot land on
+     Remove. Three times the 8px minimum for adjacent touch targets. */
+  gap: var(--space-6);
   padding: var(--space-3) var(--space-4) calc(var(--space-5) + env(safe-area-inset-bottom));
 }
 
