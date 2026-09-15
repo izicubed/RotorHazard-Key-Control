@@ -88,6 +88,7 @@
 
   /* ---- component ---- */
   --action-height: 104px;
+  --action-height-sm: 80px;
   --control-min: 48px;
   color-scheme: dark;
 }
@@ -390,11 +391,11 @@ button {
 .judge-note-warn { color: var(--warning); }
 
 .judge-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  /* A wide channel between the two, so a thumb aiming at Add cannot land on
-     Remove. Three times the 8px minimum for adjacent touch targets. */
-  gap: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  /* Well clear of the 8px minimum for adjacent touch targets: Add is the
+     button of the race and a thumb must not catch Remove on the way down. */
+  gap: var(--space-5);
   padding: var(--space-3) var(--space-4) calc(var(--space-5) + env(safe-area-inset-bottom));
 }
 
@@ -433,8 +434,23 @@ button {
   pointer-events: none;
 }
 
-.action-add { box-shadow: var(--shadow-glow-positive); }
-.action-del { box-shadow: var(--shadow-glow-negative); }
+/* Add takes the full width with its contents centred; Remove sits under it on
+   the left, smaller, because it is the rare correction. */
+.action-add {
+  width: 100%;
+  justify-content: center;
+  box-shadow: var(--shadow-glow-positive);
+}
+
+.action-del {
+  align-self: flex-start;
+  width: 60%;
+  min-width: 190px;
+  max-width: 100%;
+  min-height: var(--action-height-sm);
+  justify-content: flex-start;
+  box-shadow: var(--shadow-glow-negative);
+}
 
 .action-icon {
   display: flex;
@@ -465,19 +481,6 @@ button {
   font-size: var(--text-xs);
   font-weight: 400;
   color: var(--fg-muted);
-}
-
-/* On a phone the pair still sits side by side; the contents centre and stack
-   so neither label has to be cut. */
-@media (max-width: 420px) {
-  .action {
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-2);
-    padding: var(--space-4) var(--space-2);
-    text-align: center;
-  }
 }
 
 .action-flash { animation: flash var(--duration-normal) ease-out; }
