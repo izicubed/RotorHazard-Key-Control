@@ -1,0 +1,14 @@
+{
+  "name": "KEY CONTROL Judge",
+  "short_name": "Judge",
+  "description": "Add or remove laps for one pilot on a RotorHazard timer.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#080b12",
+  "theme_color": "#080b12",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -1,10 +1,14 @@
 # KEY CONTROL
 
-Physical two-key USB button keyboards as per-pilot lap marshals for RotorHazard.
+Per-pilot lap marshalling for RotorHazard, from a two-key USB keyboard at the
+timer or from a judge's phone anywhere on the internet.
 
-* **Key 1 — add / confirm lap**
-* **Key 2 — delete lap** (the seat's last recorded lap; also works between
-  race stop and save, switchable)
+* **Key 1 / ADD LAP** — add or confirm a lap
+* **Key 2 / REMOVE LAP** — delete the seat's last recorded lap (also works
+  between race stop and save, switchable)
+
+One marshal watches one pilot, and every press is dated to the moment it
+happened rather than the moment it arrived.
 
 ## Work modes
 
@@ -59,17 +63,45 @@ GET  http://<kc-ip>:8737/status            → {host, server, connected, devices
 POST http://<kc-ip>:8737/server {url: ...} → re-point + persist
 ```
 
+## Cloud judges — one phone per pilot
+
+Settings → **Cloud judges**, or the **Cloud judges** button in the Run-page
+panel. The plugin opens a room on the judge relay
+([judge.airmode.app](https://judge.airmode.app), see [`cloud/`](cloud)) and
+prints **one link per occupied seat**. Send each link to the marshal watching
+that channel; they open it on any phone and get a full-screen **ADD LAP** and
+**REMOVE LAP** pair for exactly that pilot, with the callsign, channel, pass
+count and last/best lap above the buttons.
+
+The timer **dials out**, so there is no port forwarding, no public IP and no
+inbound firewall rule. A judge link is per channel, so it keeps working as
+heats change and the pilot on that channel changes with them.
+
+* **New room** (panel, or Settings → *New cloud room code*) issues a fresh
+  code and invalidates every link handed out so far.
+* The read-only board at `/r/<room code>` shows every seat at once, for the
+  race director's own screen.
+* Taps made while the phone has no signal are kept on the phone and sent when
+  it comes back, still carrying the time they were made.
+
+### Why a late tap still lands on the right second
+
+A phone sends **how long ago** its judge tapped, not a clock reading. The relay
+adds the time the command waited in its queue, and the plugin records the lap
+that far back on the race clock. Network latency and wrong phone clocks
+therefore never move a lap time.
+
 ## Architecture
 
 ```
-4 × two-key USB keyboards
-        │ (evdev, exclusive grab, USB-port-ordered)
-Key Control box (Raspberry Pi, e.g. keycontrol.local)
-   keyboard_forwarder.py  +  control endpoint :8737
-        │ Socket.IO: button_kb_event {kb, button, ts}
-RotorHazard server — this plugin
-   Manual: suppress timer laps, buttons add/delete
-   Semi:   confirm timer laps in a ±window, add on miss
+4 × two-key USB keyboards                    judges' phones
+        │ (evdev, exclusive grab)                  │ HTTPS, tap age travels with the press
+Key Control box (Raspberry Pi)              judge.airmode.app (Vercel + Postgres)
+   keyboard_forwarder.py  +  :8737             room, per-seat judge tokens, press queue
+        │ Socket.IO: button_kb_event                │ the timer polls out for presses
+        └──────────────► RotorHazard server — this plugin ◄────────┘
+                            Manual: suppress timer laps, buttons add/delete
+                            Semi:   confirm timer laps in a ±window, add on miss
 ```
 
 Works on RotorHazard 4.4+ (the lap-delete API change in newer servers is
@@ -102,6 +134,8 @@ keycodes and pass them via `--add-keys` / `--del-keys`.
 | Work mode | Semi | Manual (buttons only) / Semi (confirm timer laps) |
 | Semi confirmation window | 2 s | ± window for confirmation / manual add |
 | Key Control IP | — | forwarder address for the Link button |
+| Cloud judges | off | open a judge room and issue one phone link per seat |
+| Judge relay address | https://judge.airmode.app | where the judge pages live |
 | Number of keyboards | 4 | how many keyboards the forwarder carries |
 | Show a notification | on | UI message on every button action |
 | Voice callout | off | speak "<callsign> lap added/confirmed/deleted" |
@@ -118,3 +152,5 @@ keycodes and pass them via `--add-keys` / `--del-keys`.
 * 250 ms per-button debounce absorbs key repeat and switch bounce.
 * Unmapped keyboards (heat has fewer pilots) are ignored with a notice.
 * All marks are per-race and reset when a race is staged or laps discarded.
+* A judge link only ever reaches its own seat; the room code alone grants no
+  control, and the read-only board never carries judge tokens.

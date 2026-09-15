@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="KEY CONTROL judge">
+  <rect width="64" height="64" rx="14" fill="#080b12"/>
+  <rect x="12" y="14" width="40" height="16" rx="5" fill="none" stroke="#2ecc71" stroke-width="4"/>
+  <rect x="12" y="36" width="40" height="16" rx="5" fill="none" stroke="#d8323f" stroke-width="4"/>
+  <path d="M24 22h16" stroke="#2ecc71" stroke-width="4" stroke-linecap="round"/>
+  <path d="M32 16v12" stroke="#2ecc71" stroke-width="4" stroke-linecap="round"/>
+  <path d="M24 44h16" stroke="#d8323f" stroke-width="4" stroke-linecap="round"/>
+</svg>

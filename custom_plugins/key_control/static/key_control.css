@@ -249,5 +249,30 @@
 	align-items: center; gap: 4px; white-space: nowrap; }
 #rh-bk .rh-bk-legend .rh-bk-dot { margin-left: 4px; width: 6px; height: 6px; }
 
+/* cloud judges: room status and one phone link per occupied seat */
+#rh-bk .rh-bk-cloud { border-top: 1px solid var(--bk-edge); padding: 5px 9px; }
+#rh-bk.rh-bk-collapsed .rh-bk-cloud { display: none; }
+#rh-bk .rh-bk-cloud-head { display: flex; align-items: center; gap: 6px;
+	flex-wrap: wrap; font-size: 10px; color: var(--bk-muted); }
+#rh-bk .rh-bk-btn-on { background: var(--bk-chip-ok-bg);
+	border-color: var(--bk-chip-ok-fg); color: var(--bk-chip-ok-fg); }
+#rh-bk .rh-bk-cloud-board { font-size: 10px; font-weight: 600;
+	color: var(--bk-spark); text-decoration: none; }
+#rh-bk .rh-bk-cloud-board:hover { text-decoration: underline; }
+#rh-bk .rh-bk-cloud-new { margin-left: auto; }
+#rh-bk .rh-bk-cloud-links { margin-top: 4px; }
+#rh-bk .rh-bk-cloud-link { display: flex; align-items: center; gap: 6px;
+	padding: 3px 0; border-top: 1px solid var(--bk-row-edge); cursor: pointer;
+	font-size: 10px; }
+#rh-bk .rh-bk-cloud-link:first-child { border-top: none; }
+#rh-bk .rh-bk-cloud-link:hover { background: var(--bk-head-bg); }
+#rh-bk .rh-bk-cloud-link .rh-bk-url { flex: 1 1 auto; min-width: 0;
+	color: var(--bk-soft); font-family: ui-monospace, Menlo, Consolas, monospace;
+	font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#rh-bk .rh-bk-cloud-link .rh-bk-copy { flex: 0 0 auto; font-size: 9px;
+	font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+	color: var(--bk-muted); }
+#rh-bk .rh-bk-cloud-link.rh-bk-copied .rh-bk-copy { color: var(--bk-chip-ok-fg); }
+
 /* hide helper */
 #rh-bk.rh-bk-hidden, #rh-bk .rh-bk-hidden { display: none !important; }

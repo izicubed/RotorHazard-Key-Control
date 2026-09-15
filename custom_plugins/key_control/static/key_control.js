@@ -6,6 +6,8 @@
  * seat/pilot with the recent-lap dots (green confirmed / yellow unconfirmed /
  * blue button-only / red deleted). Footer: Calibrate flow (bind keyboards to
  * channels by pressing a key on each in turn), mapping reset and Link.
+ * Cloud block: opens a room on the judge relay and lists one phone link per
+ * occupied seat, so a marshal with a phone replaces a keyboard.
  * Driven by the server `button_kb_state` snapshot. */
 (function () {
 	'use strict';
@@ -67,6 +69,7 @@
 	function isOpen() {
 		if (state && state.calibration) { return true; }
 		if (state && state.enabled && state.forwarder && !state.forwarder.online) { return true; }
+		if (state && state.cloud && state.cloud.enabled && !state.cloud.online) { return true; }
 		if (userOpen !== null) { return userOpen; }
 		if (state && state.enabled && state.race_status === 1) { return true; }
 		return false;
@@ -89,6 +92,13 @@
 			'<span class="rh-bk-chip rh-bk-link"></span></div>' +
 			'<div class="rh-bk-cal rh-bk-hidden"></div>' +
 			'<div class="rh-bk-list"></div>' +
+			'<div class="rh-bk-cloud">' +
+			'<div class="rh-bk-cloud-head">' +
+			'<button class="rh-bk-btn rh-bk-cloud-btn" title="Give every occupied seat a phone page with ADD LAP / REMOVE LAP. The timer dials out, so no port forwarding is needed.">Cloud judges</button>' +
+			'<span class="rh-bk-chip rh-bk-cloud-chip"></span>' +
+			'<a class="rh-bk-cloud-board" target="_blank" rel="noopener">board</a>' +
+			'<button class="rh-bk-btn rh-bk-cloud-new" title="Issue a new room code. Every link handed out so far stops working.">New room</button>' +
+			'</div><div class="rh-bk-cloud-links"></div></div>' +
 			'<div class="rh-bk-foot">' +
 			'<button class="rh-bk-btn rh-bk-cal-btn">Calibrate</button>' +
 			'<button class="rh-bk-btn rh-bk-reset-btn" title="Clear all fixed pins: keyboard N controls the Nth occupied seat again">Auto map</button>' +
@@ -120,11 +130,106 @@
 		panel.querySelector('.rh-bk-link-btn').addEventListener('click', function () {
 			socket.emit('button_kb_link', {});
 		});
+		panel.querySelector('.rh-bk-cloud-btn').addEventListener('click', function () {
+			var on = !!(state && state.cloud && state.cloud.enabled);
+			socket.emit('button_kb_cloud', { action: on ? 'off' : 'on' });
+		});
+		panel.querySelector('.rh-bk-cloud-new').addEventListener('click', function () {
+			if (window.confirm('Issue a new room code? Every judge link handed ' +
+				'out so far will stop working.')) {
+				socket.emit('button_kb_cloud', { action: 'newroom' });
+			}
+		});
+		panel.querySelector('.rh-bk-cloud-links').addEventListener('click', function (e) {
+			var row = e.target.closest('.rh-bk-cloud-link');
+			if (row) { copyLink(row); }
+		});
 		d.appendChild(panel);
 		return panel;
 	}
 
 	function q(sel) { return panel.querySelector(sel); }
+
+	// Clipboard first; a hidden selection is the fallback where the browser
+	// refuses (non-secure origin - a timer on plain http is the normal case).
+	function copyLink(row) {
+		var url = row.getAttribute('data-url') || '';
+		var tag = row.querySelector('.rh-bk-copy');
+		var done = function () {
+			row.classList.add('rh-bk-copied');
+			if (tag) { tag.textContent = 'copied'; }
+			setTimeout(function () {
+				row.classList.remove('rh-bk-copied');
+				if (tag) { tag.textContent = 'copy'; }
+			}, 1200);
+		};
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			navigator.clipboard.writeText(url).then(done, function () { select(url, done); });
+		} else {
+			select(url, done);
+		}
+	}
+
+	function select(url, done) {
+		var ta = document.createElement('textarea');
+		ta.value = url;
+		ta.setAttribute('readonly', '');
+		ta.style.position = 'fixed';
+		ta.style.opacity = '0';
+		document.body.appendChild(ta);
+		ta.select();
+		try { document.execCommand('copy'); done(); } catch (e) { window.prompt('Copy this link:', url); }
+		document.body.removeChild(ta);
+	}
+
+	function renderCloud() {
+		var c = (state && state.cloud) || {};
+		var btn = q('.rh-bk-cloud-btn');
+		var chip = q('.rh-bk-cloud-chip');
+		var board = q('.rh-bk-cloud-board');
+		var links = q('.rh-bk-cloud-links');
+
+		btn.textContent = c.enabled ? 'Cloud judges: on' : 'Cloud judges: off';
+		btn.classList.toggle('rh-bk-btn-on', !!c.enabled);
+		q('.rh-bk-cloud-new').classList.toggle('rh-bk-hidden', !c.enabled);
+		links.classList.toggle('rh-bk-hidden', !c.enabled);
+
+		if (!c.enabled) {
+			chip.className = 'rh-bk-chip rh-bk-cloud-chip rh-bk-hidden';
+			board.classList.add('rh-bk-hidden');
+			links.innerHTML = '';
+			return;
+		}
+
+		chip.className = 'rh-bk-chip rh-bk-cloud-chip ' +
+			(c.online ? 'rh-bk-c-ok' : 'rh-bk-c-err');
+		chip.textContent = c.online ? 'room ' + c.room : 'relay down';
+		chip.title = c.online ?
+			'Connected to ' + c.url + (c.durable === false ?
+				' (relay has no shared store - one instance only)' : '') :
+			(c.error || 'No answer from ' + c.url);
+
+		board.classList.toggle('rh-bk-hidden', !c.board);
+		board.href = c.board || '#';
+		board.title = 'Read-only board for the whole room';
+
+		var rows = c.links || [];
+		if (!rows.length) {
+			links.innerHTML = '<div class="rh-bk-empty">No occupied seats — ' +
+				'assign pilots to the heat to get judge links.</div>';
+			return;
+		}
+		var html = '';
+		rows.forEach(function (r) {
+			html += '<div class="rh-bk-cloud-link" data-url="' + esc(r.url) +
+				'" title="Click to copy this judge link">' +
+				'<span class="rh-bk-seat">' + esc(r.label) + '</span>' +
+				'<span class="rh-bk-name">' + esc(r.callsign || '—') + '</span>' +
+				'<span class="rh-bk-url">' + esc(r.url) + '</span>' +
+				'<span class="rh-bk-copy">copy</span></div>';
+		});
+		links.innerHTML = html;
+	}
 
 	function lapDots(m) {
 		var html = '<span class="rh-bk-laps">';
@@ -250,6 +355,7 @@
 				' title="key 2 — delete last lap"></i></span></div>';
 		});
 		list.innerHTML = html;
+		renderCloud();
 		applyLit();
 	}
 
