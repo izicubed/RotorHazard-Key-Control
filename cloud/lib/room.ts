@@ -37,7 +37,9 @@ export type RoomState = {
   updatedAt: number;     // server clock, ms
   event: string;         // heat/class name shown to the judge
   mode: 'manual' | 'semi';
-  raceStatus: number;    // RotorHazard RaceStatus: 0 ready 1 racing 2 done 3 stopped
+  raceStatus: number;    // RotorHazard RaceStatus: 0 ready, 1 racing, 2 done, 3 staging
+  raceElapsed: number;   // ms on the race clock when this snapshot was taken
+  raceLimit: number;     // race length in seconds, 0 when the format counts up
   seats: Seat[];
 };
 
@@ -132,6 +134,16 @@ export function badRequest(message: string, status = 400) {
  *  tell the judge the timer is unreachable rather than showing stale laps. */
 export const STALE_MS = 25_000;
 
+export const RACING = 1;
+
+/** The race clock as of this instant. The snapshot is always a little old, so
+ *  a running clock is carried forward by however long it has been in flight;
+ *  a stopped one is reported exactly where it stopped. */
+export function clockNow(state: RoomState): number {
+  if (state.raceStatus !== RACING) return state.raceElapsed;
+  return state.raceElapsed + Math.max(0, Date.now() - state.updatedAt);
+}
+
 /** Everything one judge's phone shows, or null if the link is not live. */
 export async function judgeView(token: string) {
   const link = await resolveToken(token);
@@ -148,6 +160,8 @@ export async function judgeView(token: string) {
     event: state.event,
     mode: state.mode,
     raceStatus: state.raceStatus,
+    raceElapsed: clockNow(state),
+    raceLimit: state.raceLimit,
     timerOnline: age < STALE_MS,
     timerAge: Math.round(age / 1000),
     seq: state.seq,

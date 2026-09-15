@@ -19,6 +19,8 @@ export async function POST(req: NextRequest) {
     event: String(body?.event ?? ''),
     mode: body?.mode === 'manual' ? 'manual' : 'semi',
     raceStatus: Number(body?.raceStatus ?? 0),
+    raceElapsed: Math.max(0, Number(body?.raceElapsed ?? 0)),
+    raceLimit: Math.max(0, Number(body?.raceLimit ?? 0)),
     seats: seats.map((s: Record<string, unknown>) => ({
       seat: Number(s.seat),
       token: String(s.token),

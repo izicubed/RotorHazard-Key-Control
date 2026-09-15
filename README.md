@@ -37,6 +37,15 @@ Settings). Each lap gets a colored mark in the panel:
 Press-before-lap and press-after-lap both confirm, as long as the two are
 within the window of each other.
 
+## Using one half only
+
+The panel footer carries a **Using** row with a switch for each half:
+**Keyboards** and **Cloud judges**. A half that is switched off leaves the
+panel completely, so an event run entirely from phones never shows the
+keyboard rows, the Calibrate flow or the forwarder link, and an event with no
+internet never shows the judge links. The switches themselves stay put, and
+the same two settings live in Settings → KEY CONTROL.
+
 ## Keyboard → pilot mapping
 
 By default **keyboard N controls the Nth occupied seat** (frequency + pilot)
@@ -77,6 +86,9 @@ The timer **dials out**, so there is no port forwarding, no public IP and no
 inbound firewall rule. A judge link is per channel, so it keeps working as
 heats change and the pilot on that channel changes with them.
 
+* Both judge pages carry the **race clock**, counting down on a timed format
+  and up on an open one. It ticks on the phone between updates and freezes
+  where the race stopped.
 * **New room** (panel, or Settings → *New cloud room code*) issues a fresh
   code and invalidates every link handed out so far.
 * The read-only board at `/r/<room code>` shows every seat at once, for the
@@ -134,6 +146,7 @@ keycodes and pass them via `--add-keys` / `--del-keys`.
 | Work mode | Semi | Manual (buttons only) / Semi (confirm timer laps) |
 | Semi confirmation window | 2 s | ± window for confirmation / manual add |
 | Key Control IP | — | forwarder address for the Link button |
+| Keyboard control | on | use the USB button keyboards; off hides them from the panel |
 | Cloud judges | off | open a judge room and issue one phone link per seat |
 | Judge relay address | https://judge.airmode.app | where the judge pages live |
 | Number of keyboards | 4 | how many keyboards the forwarder carries |

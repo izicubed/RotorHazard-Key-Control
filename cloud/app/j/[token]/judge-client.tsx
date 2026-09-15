@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { DONE, RACING, RaceBar, statusText } from '../../race-clock';
 
 type View = {
   ok: true;
@@ -8,6 +9,8 @@ type View = {
   event: string;
   mode: 'manual' | 'semi';
   raceStatus: number;
+  raceElapsed: number;
+  raceLimit: number;
   timerOnline: boolean;
   timerAge: number;
   seq: number;
@@ -20,11 +23,6 @@ type View = {
 };
 
 type Press = { button: 'add' | 'del'; at: number };
-
-/** RotorHazard RaceStatus. */
-const READY = 0;
-const RACING = 1;
-const DONE = 2;
 
 const POLL_RACING = 1200;
 const POLL_IDLE = 4000;
@@ -226,11 +224,16 @@ export default function JudgeClient({ token }: { token: string }) {
             {view.event || 'No heat selected'} · room {view.room}
           </div>
         </div>
-        <span className={`badge ${statusClass(offline, view)}`}>
-          <i className="dot" aria-hidden="true" />
-          {statusLabel(offline, view)}
-        </span>
       </header>
+
+      <RaceBar
+        status={view.raceStatus}
+        elapsed={view.raceElapsed}
+        limit={view.raceLimit}
+        mode={view.mode}
+        label={statusLabel(offline, view)}
+        tone={statusClass(offline, view)}
+      />
 
       <section className="judge-body">
         <div className="card count-card">
@@ -261,7 +264,13 @@ export default function JudgeClient({ token }: { token: string }) {
           onClick={() => onClick('add')}
           disabled={!racing}
         >
-          ADD LAP
+          <span className="action-icon">
+            <CheckIcon />
+          </span>
+          <span className="action-text">
+            <span className="action-title">Add Lap</span>
+            <span className="action-hint">at the gate</span>
+          </span>
         </button>
         <button
           type="button"
@@ -270,14 +279,36 @@ export default function JudgeClient({ token }: { token: string }) {
           onClick={() => onClick('del')}
           disabled={!canDelete || view.laps === 0}
         >
-          REMOVE LAP
+          <span className="action-icon">
+            <MinusIcon />
+          </span>
+          <span className="action-text">
+            <span className="action-title">Remove Lap</span>
+            <span className="action-hint">undo the last</span>
+          </span>
         </button>
       </div>
     </main>
   );
 }
 
-function statusClass(offline: boolean, view: View) {
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
+
+function MinusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14" />
+    </svg>
+  );
+}
+
+function statusClass(offline: boolean, view: View): '' | 'badge-live' | 'badge-warn' | 'badge-down' {
   if (offline) return 'badge-down';
   if (!view.timerOnline) return 'badge-warn';
   return view.raceStatus === RACING ? 'badge-live' : '';
@@ -286,10 +317,7 @@ function statusClass(offline: boolean, view: View) {
 function statusLabel(offline: boolean, view: View) {
   if (offline) return 'No signal';
   if (!view.timerOnline) return 'Timer offline';
-  if (view.raceStatus === RACING) return 'Racing';
-  if (view.raceStatus === DONE) return 'Race over';
-  if (view.raceStatus === READY) return 'Ready';
-  return 'Stopped';
+  return statusText(view.raceStatus);
 }
 
 function hint(view: View, offline: boolean) {
@@ -297,8 +325,8 @@ function hint(view: View, offline: boolean) {
   if (!view.timerOnline) return `Timer last seen ${view.timerAge}s ago.`;
   if (view.raceStatus === RACING) {
     return view.mode === 'manual'
-      ? 'Tap ADD LAP as your pilot crosses the gate.'
-      : 'Tap ADD LAP at the gate to confirm the timer, or to add a missed lap.';
+      ? 'Tap Add Lap as your pilot crosses the gate.'
+      : 'Tap Add Lap at the gate to confirm the timer, or to add a missed lap.';
   }
   if (view.raceStatus === DONE) return 'Race finished. You can still remove a wrong lap.';
   return 'Waiting for the race to start.';

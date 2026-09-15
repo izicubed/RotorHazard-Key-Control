@@ -68,7 +68,7 @@
 	// by header click is session-only.
 	function isOpen() {
 		if (state && state.calibration) { return true; }
-		if (state && state.enabled && state.forwarder && !state.forwarder.online) { return true; }
+		if (state && state.enabled && state.kb_enabled && state.forwarder && !state.forwarder.online) { return true; }
 		if (state && state.cloud && state.cloud.enabled && !state.cloud.online) { return true; }
 		if (userOpen !== null) { return userOpen; }
 		if (state && state.enabled && state.race_status === 1) { return true; }
@@ -94,7 +94,7 @@
 			'<div class="rh-bk-list"></div>' +
 			'<div class="rh-bk-cloud">' +
 			'<div class="rh-bk-cloud-head">' +
-			'<button class="rh-bk-btn rh-bk-cloud-btn" title="Give every occupied seat a phone page with ADD LAP / REMOVE LAP. The timer dials out, so no port forwarding is needed.">Cloud judges</button>' +
+			'<span class="rh-bk-cloud-title">Cloud judges</span>' +
 			'<span class="rh-bk-chip rh-bk-cloud-chip"></span>' +
 			'<a class="rh-bk-cloud-board" target="_blank" rel="noopener">board</a>' +
 			'<button class="rh-bk-btn rh-bk-cloud-new" title="Issue a new room code. Every link handed out so far stops working.">New room</button>' +
@@ -104,6 +104,11 @@
 			'<button class="rh-bk-btn rh-bk-reset-btn" title="Clear all fixed pins: keyboard N controls the Nth occupied seat again">Auto map</button>' +
 			'<button class="rh-bk-btn rh-bk-link-btn" title="Contact the forwarder at the Key Control IP (Settings) and point it at this server">Link</button>' +
 			'<span class="rh-bk-legend"><i class="rh-bk-dot rh-bk-m-green"></i>confirmed <i class="rh-bk-dot rh-bk-m-yellow"></i>unconfirmed <i class="rh-bk-dot rh-bk-m-blue"></i>manual <i class="rh-bk-dot rh-bk-m-red"></i>deleted</span>' +
+			'</div>' +
+			'<div class="rh-bk-sections">' +
+			'<span class="rh-bk-sections-label">Using</span>' +
+			'<button class="rh-bk-toggle" data-section="kb" title="USB button keyboards read by the Pi forwarder. Off hides the keyboard rows, the Calibrate flow and the forwarder link.">Keyboards</button>' +
+			'<button class="rh-bk-toggle" data-section="cloud" title="Phone judges over the internet. Off closes the room and hides the judge links.">Cloud judges</button>' +
 			'</div>';
 		panel.querySelector('.rh-bk-head').addEventListener('click', function (e) {
 			if (e.target.closest('button, input, label')) { return; }
@@ -130,9 +135,14 @@
 		panel.querySelector('.rh-bk-link-btn').addEventListener('click', function () {
 			socket.emit('button_kb_link', {});
 		});
-		panel.querySelector('.rh-bk-cloud-btn').addEventListener('click', function () {
-			var on = !!(state && state.cloud && state.cloud.enabled);
-			socket.emit('button_kb_cloud', { action: on ? 'off' : 'on' });
+		Array.prototype.forEach.call(panel.querySelectorAll('.rh-bk-toggle'), function (b) {
+			b.addEventListener('click', function () {
+				var section = b.getAttribute('data-section');
+				var on = section === 'cloud'
+					? !!(state && state.cloud && state.cloud.enabled)
+					: !!(state && state.kb_enabled);
+				socket.emit('button_kb_toggle', { section: section, on: !on });
+			});
 		});
 		panel.querySelector('.rh-bk-cloud-new').addEventListener('click', function () {
 			if (window.confirm('Issue a new room code? Every judge link handed ' +
@@ -182,21 +192,31 @@
 		document.body.removeChild(ta);
 	}
 
+	function renderSections() {
+		var kbOn = !!(state && state.kb_enabled);
+		var cloudOn = !!(state && state.cloud && state.cloud.enabled);
+		Array.prototype.forEach.call(panel.querySelectorAll('.rh-bk-toggle'), function (b) {
+			var on = b.getAttribute('data-section') === 'cloud' ? cloudOn : kbOn;
+			b.classList.toggle('rh-bk-toggle-on', on);
+			b.setAttribute('aria-pressed', on ? 'true' : 'false');
+		});
+		// keyboard half: rows, calibration, the forwarder buttons and the legend
+		panel.querySelector('.rh-bk-list').classList.toggle('rh-bk-hidden', !kbOn);
+		panel.querySelector('.rh-bk-foot').classList.toggle('rh-bk-hidden', !kbOn);
+		if (!kbOn) { panel.querySelector('.rh-bk-cal').classList.add('rh-bk-hidden'); }
+		q('.rh-bk-link').classList.toggle('rh-bk-hidden', !kbOn);
+	}
+
 	function renderCloud() {
 		var c = (state && state.cloud) || {};
-		var btn = q('.rh-bk-cloud-btn');
 		var chip = q('.rh-bk-cloud-chip');
 		var board = q('.rh-bk-cloud-board');
 		var links = q('.rh-bk-cloud-links');
 
-		btn.textContent = c.enabled ? 'Cloud judges: on' : 'Cloud judges: off';
-		btn.classList.toggle('rh-bk-btn-on', !!c.enabled);
-		q('.rh-bk-cloud-new').classList.toggle('rh-bk-hidden', !c.enabled);
-		links.classList.toggle('rh-bk-hidden', !c.enabled);
-
+		// A half that is switched off leaves the panel entirely; the footer
+		// switches are how it comes back.
+		q('.rh-bk-cloud').classList.toggle('rh-bk-hidden', !c.enabled);
 		if (!c.enabled) {
-			chip.className = 'rh-bk-chip rh-bk-cloud-chip rh-bk-hidden';
-			board.classList.add('rh-bk-hidden');
 			links.innerHTML = '';
 			return;
 		}
@@ -312,9 +332,15 @@
 		// collapsed-header summary
 		var mapping = state.mapping || [];
 		var mapped = mapping.filter(function (m) { return m.seat != null; }).length;
-		mut.textContent = (state.mode === 'manual' ? 'manual · ' : 'semi ±' + state.threshold + 's · ') +
-			mapped + '/' + mapping.length +
-			(fw.host && fw.online ? ' · ' + fw.host : '');
+		var parts = [state.mode === 'manual' ? 'manual' : 'semi ±' + state.threshold + 's'];
+		if (state.kb_enabled) {
+			parts.push(mapped + '/' + mapping.length + ' kb');
+			if (fw.host && fw.online) { parts.push(fw.host); }
+		}
+		if (state.cloud && state.cloud.enabled) {
+			parts.push(state.cloud.online ? 'room ' + state.cloud.room : 'relay down');
+		}
+		mut.textContent = parts.join(' · ');
 
 		// calibration banner
 		var cal = state.calibration;
@@ -356,6 +382,7 @@
 		});
 		list.innerHTML = html;
 		renderCloud();
+		renderSections();
 		applyLit();
 	}
 

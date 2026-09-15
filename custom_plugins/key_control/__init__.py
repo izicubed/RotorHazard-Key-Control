@@ -28,7 +28,7 @@ from eventmanager import Evt
 from .controller import (
     ButtonKeyboardController, PLUGIN_ID,
     EV_HELLO, EV_HEARTBEAT, EV_KEY, EV_GET_STATE,
-    EV_SET_MODE, EV_SET_THRESHOLD, EV_CALIBRATE, EV_LINK, EV_CLOUD,
+    EV_SET_MODE, EV_SET_THRESHOLD, EV_CALIBRATE, EV_LINK, EV_CLOUD, EV_TOGGLE,
 )
 
 
@@ -58,6 +58,7 @@ def initialize(rhapi):
     rhapi.ui.socket_listen(EV_CALIBRATE, controller.on_calibrate)
     rhapi.ui.socket_listen(EV_LINK, controller.on_link)
     rhapi.ui.socket_listen(EV_CLOUD, controller.on_cloud)
+    rhapi.ui.socket_listen(EV_TOGGLE, controller.on_toggle)
 
     # work modes: classify every recorded lap (ours / timer's)
     rhapi.events.on(Evt.RACE_LAP_RECORDED, controller.on_lap_recorded,
@@ -72,7 +73,7 @@ def initialize(rhapi):
                     name='key_control_heat')
     rhapi.events.on(Evt.RACE_START, controller.on_change,
                     name='key_control_start')
-    rhapi.events.on(Evt.RACE_STOP, controller.on_change,
+    rhapi.events.on(Evt.RACE_STOP, controller.on_race_end,
                     name='key_control_stop')
     rhapi.events.on(Evt.LAP_DELETE, controller.on_change,
                     name='key_control_lapdel')

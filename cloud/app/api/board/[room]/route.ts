@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { STALE_MS, badRequest, getState } from '@/lib/room';
+import { STALE_MS, badRequest, clockNow, getState } from '@/lib/room';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,6 +17,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ room: stri
     event: state.event,
     mode: state.mode,
     raceStatus: state.raceStatus,
+    raceElapsed: clockNow(state),
+    raceLimit: state.raceLimit,
     timerOnline: age < STALE_MS,
     seats: state.seats.map(({ token, ...rest }) => ({ ...rest, judgeLinked: Boolean(token) })),
     serverTime: Date.now(),

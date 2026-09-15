@@ -55,6 +55,7 @@ EV_CALIBRATE = 'button_kb_calibrate'        # {action:'start'|'cancel'|'reset'}
 EV_LINK = 'button_kb_link'                  # {} -> contact forwarder at bk_kc_ip
 EV_PRESS = 'button_kb_press'                # server -> panel: {kb, button} live flash
 EV_CLOUD = 'button_kb_cloud'                # {action:'on'|'off'|'newroom'}
+EV_TOGGLE = 'button_kb_toggle'              # {section:'kb'|'cloud', on:bool}
 
 # options
 OPT_ENABLED = 'bk_enabled'
@@ -67,12 +68,13 @@ OPT_SPEAK = 'bk_speak'
 OPT_DEL_WHEN_STOPPED = 'bk_del_when_stopped'
 OPT_THEME = 'bk_theme'
 OPT_SEAT_PREFIX = 'bk_seat_kb'  # bk_seat_kb1..bk_seat_kb8; 0 = automatic
+OPT_KB_ENABLED = 'bk_kb_enabled'
 OPT_CLOUD_ENABLED = 'bk_cloud_enabled'
 OPT_CLOUD_URL = 'bk_cloud_url'
 # bk_cloud_room / bk_cloud_secret / bk_cloud_tokens are written by CloudRelay
 # and deliberately not registered: they are identity, not settings.
 
-PLUGIN_VERSION = '1.3.0'
+PLUGIN_VERSION = '1.4.0'
 
 MODE_MANUAL = 'manual'
 MODE_SEMI = 'semi'
@@ -105,6 +107,7 @@ class ButtonKeyboardController:
         self._cal = None           # {'seats':[…], 'idx':int, 'used':set(kb), 'last': monotonic}
         # ---- cloud judges ----
         self.version = PLUGIN_VERSION
+        self._race_end_ms = None   # frozen race clock once the race stops
         self._last_remote = {}     # (seat, button) -> monotonic of last accepted tap
         self.cloud = CloudRelay(rhapi, self)
 
@@ -166,6 +169,12 @@ class ButtonKeyboardController:
                 '0: keyboard {n} controls the {n}. occupied seat of the current '
                 'heat. 1-8: always control that seat number. The panel\'s '
                 'Calibrate flow fills these in for you.'.format(n=i))
+        opt(OPT_KB_ENABLED, 'Keyboard control (USB button keyboards)',
+            UIFieldType.CHECKBOX, True,
+            'Use the two-key USB keyboards read by the Pi forwarder. Switch '
+            'off at an event with no keyboards: key events are ignored and the '
+            'keyboard rows, the Calibrate flow and the forwarder link leave the '
+            'Run-page panel.')
         opt(OPT_CLOUD_ENABLED, 'Cloud judges (phones over the internet)',
             UIFieldType.CHECKBOX, False,
             'Open a room on the judge relay and give every occupied seat its '
@@ -293,6 +302,29 @@ class ButtonKeyboardController:
             pass
         return None
 
+    def kb_enabled(self):
+        return self._opt_bool(OPT_KB_ENABLED, True)
+
+    def _race_clock(self):
+        '''Where the race clock stands right now. `elapsed` is milliseconds
+        since the start, frozen once the race stops; `limit` is the format's
+        race length in seconds, or 0 when the format counts up.'''
+        race = self._racecontext.race
+        if race.race_status == RaceStatus.RACING:
+            elapsed = self._race_ms() or 0.0
+        elif self._race_end_ms is not None:
+            elapsed = self._race_end_ms
+        else:
+            elapsed = 0.0
+        limit = 0 if getattr(race, 'unlimited_time', True)             else int(getattr(race, 'race_time_sec', 0) or 0)
+        return {'elapsed': int(max(0.0, elapsed)), 'limit': limit}
+
+    def on_race_end(self, _args=None):
+        '''Evt.RACE_STOP / RACE_FINISH: freeze the clock where it stopped.'''
+        if self._race_end_ms is None:
+            self._race_end_ms = self._race_ms() or 0.0
+        self.on_change()
+
     def _race_ms(self):
         '''Milliseconds since race start (same scale as lap_time_stamp).'''
         race = self._racecontext.race
@@ -340,7 +372,7 @@ class ButtonKeyboardController:
         '''EV_KEY from the forwarder: {kb, button, ts?}.'''
         if not isinstance(data, dict):
             return
-        if not self._opt_bool(OPT_ENABLED, True):
+        if not self._opt_bool(OPT_ENABLED, True) or not self.kb_enabled():
             return
         try:
             kb = int(data.get('kb'))
@@ -756,6 +788,7 @@ class ButtonKeyboardController:
     # ---------------------------------------------------------- race lifecycle
 
     def on_race_reset(self, _args=None):
+        self._race_end_ms = None
         self._marks = {}
         self._own_expect = {}
         self._pending = {}
@@ -826,6 +859,8 @@ class ButtonKeyboardController:
             }
         return {
             'enabled': self._opt_bool(OPT_ENABLED, True),
+            'kb_enabled': self.kb_enabled(),
+            'clock': self._race_clock(),
             'mode': self._mode(),
             'threshold': self._threshold(),
             'race_status': race.race_status,
@@ -854,6 +889,22 @@ class ButtonKeyboardController:
             self.on_change()
 
     # -------------------------------------------------------- cloud judges
+
+    def on_toggle(self, data=None):
+        '''Panel switch for either half of the plugin. A half that is off
+        leaves the panel entirely, so an event that uses only phones never
+        sees the keyboard rows and the other way round.'''
+        section = (data or {}).get('section')
+        on = bool((data or {}).get('on'))
+        if section == 'kb':
+            self._rhapi.db.option_set(OPT_KB_ENABLED, '1' if on else '0')
+        elif section == 'cloud':
+            self._rhapi.db.option_set(OPT_CLOUD_ENABLED, '1' if on else '0')
+            if on:
+                self.cloud.start()
+            else:
+                self.cloud.stop()
+        self.on_change()
 
     def on_cloud(self, data=None):
         action = (data or {}).get('action')
@@ -898,10 +949,13 @@ class ButtonKeyboardController:
                 'lastLap': live[-1].lap_time_formatted if live else None,
                 'bestLap': best.lap_time_formatted if best else None,
             })
+        clock = self._race_clock()
         return {
             'event': self._heat_name(),
             'mode': self._mode(),
             'raceStatus': race.race_status,
+            'raceElapsed': clock['elapsed'],
+            'raceLimit': clock['limit'],
             'seats': seats,
         }
 

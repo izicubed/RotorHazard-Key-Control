@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { RACING, RaceBar, statusText } from '../../race-clock';
 
 type Seat = {
   seat: number;
@@ -17,11 +18,11 @@ type Board = {
   event: string;
   mode: 'manual' | 'semi';
   raceStatus: number;
+  raceElapsed: number;
+  raceLimit: number;
   timerOnline: boolean;
   seats: Seat[];
 };
-
-const RACING = 1;
 
 export default function BoardClient({ room }: { room: string }) {
   const [board, setBoard] = useState<Board | null>(null);
@@ -76,7 +77,7 @@ export default function BoardClient({ room }: { room: string }) {
     );
   }
 
-  const badge = board.timerOnline
+  const badge: '' | 'badge-live' | 'badge-down' = board.timerOnline
     ? board.raceStatus === RACING
       ? 'badge-live'
       : ''
@@ -93,11 +94,17 @@ export default function BoardClient({ room }: { room: string }) {
             {board.event || 'No heat selected'} · {board.mode === 'manual' ? 'Manual' : 'Semi'} mode
           </p>
         </div>
-        <span className={`badge ${badge}`}>
-          <i className="dot" aria-hidden="true" />
-          {board.timerOnline ? statusText(board.raceStatus) : 'Timer offline'}
-        </span>
       </div>
+
+      <RaceBar
+        inline
+        status={board.raceStatus}
+        elapsed={board.raceElapsed}
+        limit={board.raceLimit}
+        mode={board.mode}
+        label={board.timerOnline ? statusText(board.raceStatus) : 'Timer offline'}
+        tone={badge}
+      />
 
       <div className="card">
         {board.seats.length === 0 && (
@@ -129,8 +136,4 @@ export default function BoardClient({ room }: { room: string }) {
       </p>
     </main>
   );
-}
-
-function statusText(status: number) {
-  return ['Ready', 'Racing', 'Race over', 'Stopped'][status] ?? 'Unknown';
 }

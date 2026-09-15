@@ -274,5 +274,29 @@
 	color: var(--bk-muted); }
 #rh-bk .rh-bk-cloud-link.rh-bk-copied .rh-bk-copy { color: var(--bk-chip-ok-fg); }
 
+/* section switches: which halves of the plugin this event actually uses */
+#rh-bk .rh-bk-sections { display: flex; align-items: center; gap: 6px;
+	padding: 5px 9px; border-top: 1px solid var(--bk-edge);
+	font-size: 10px; color: var(--bk-muted); flex-wrap: wrap; }
+#rh-bk.rh-bk-collapsed .rh-bk-sections { display: none; }
+#rh-bk .rh-bk-sections-label { text-transform: uppercase; letter-spacing: 0.06em;
+	font-size: 9px; font-weight: 700; }
+#rh-bk .rh-bk-toggle {
+	appearance: none; -webkit-appearance: none; cursor: pointer;
+	background: transparent; color: var(--bk-muted);
+	border: 1px solid var(--bk-kbd-border); border-radius: 999px;
+	padding: 2px 9px 2px 18px; font-size: 10px; font-weight: 600;
+	font-family: inherit; line-height: 1.4; position: relative;
+}
+#rh-bk .rh-bk-toggle::before { content: ''; position: absolute; left: 7px;
+	top: 50%; transform: translateY(-50%); width: 6px; height: 6px;
+	border-radius: 50%; background: var(--bk-muted); }
+#rh-bk .rh-bk-toggle:hover { filter: brightness(1.2); }
+#rh-bk .rh-bk-toggle-on { color: var(--bk-chip-ok-fg);
+	border-color: var(--bk-chip-ok-fg); background: var(--bk-chip-ok-bg); }
+#rh-bk .rh-bk-toggle-on::before { background: var(--bk-chip-ok-fg); }
+#rh-bk .rh-bk-cloud-title { font-weight: 700; text-transform: uppercase;
+	letter-spacing: 0.06em; font-size: 9px; color: var(--bk-soft); }
+
 /* hide helper */
 #rh-bk.rh-bk-hidden, #rh-bk .rh-bk-hidden { display: none !important; }
