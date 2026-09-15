@@ -153,8 +153,9 @@
 		panel.querySelector('.rh-bk-cloud-links').addEventListener('click', function (e) {
 			var row = e.target.closest('.rh-bk-cloud-link');
 			if (!row) { return; }
-			if (e.target.classList.contains('rh-bk-qr')) { showQr(row); }
-			else { copyLink(row); }
+			if (e.target.closest('.rh-bk-code')) { return; }   // let the link open
+			if (e.target.closest('.rh-bk-qrbtn')) { showQr(row); return; }
+			copyLink(row);
 		});
 		d.appendChild(panel);
 		return panel;
@@ -260,17 +261,16 @@
 		}
 		var html = '';
 		rows.forEach(function (r) {
+			var code = String(r.url || '').split('/j/')[1] || '';
 			html += '<div class="rh-bk-cloud-link" data-url="' + esc(r.url) +
 				'" data-qr="' + esc(r.qr || '') +
 				'" data-who="' + esc((r.callsign || '') + ' ' + (r.label || '')) +
 				'" title="Click to copy this judge link">' +
-				(r.qr ? '<img class="rh-bk-qr" src="' + esc(r.qr) +
-					'" alt="QR code for ' + esc(r.callsign || r.label) +
-					'" title="Scan with the judge’s phone — click to enlarge" ' +
-					'loading="lazy" width="34" height="34">' : '') +
 				'<span class="rh-bk-seat">' + esc(r.label) + '</span>' +
 				'<span class="rh-bk-name">' + esc(r.callsign || '—') + '</span>' +
-				'<span class="rh-bk-url">' + esc(r.url) + '</span>' +
+				'<a class="rh-bk-code" href="' + esc(r.url) + '" target="_blank" ' +
+				'rel="noopener" title="Open this judge page">' + esc(code) + '</a>' +
+				(r.qr ? '<span class="rh-bk-qrbtn" title="Show a QR code for the judge to scan">QR</span>' : '') +
 				'<span class="rh-bk-copy">copy</span></div>';
 		});
 		links.innerHTML = html;

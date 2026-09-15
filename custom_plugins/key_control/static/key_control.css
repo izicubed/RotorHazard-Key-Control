@@ -266,22 +266,26 @@
 	font-size: 10px; }
 #rh-bk .rh-bk-cloud-link:first-child { border-top: none; }
 #rh-bk .rh-bk-cloud-link:hover { background: var(--bk-head-bg); }
-#rh-bk .rh-bk-cloud-link .rh-bk-url { flex: 1 1 auto; min-width: 0;
-	color: var(--bk-soft); font-family: ui-monospace, Menlo, Consolas, monospace;
-	font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#rh-bk .rh-bk-cloud-link .rh-bk-code { flex: 0 0 auto; margin-left: auto;
+	color: var(--bk-spark); font-family: ui-monospace, Menlo, Consolas, monospace;
+	font-size: 9px; letter-spacing: 0.04em; text-decoration: none;
+	white-space: nowrap; }
+#rh-bk .rh-bk-cloud-link .rh-bk-code:hover { text-decoration: underline; }
+#rh-bk .rh-bk-cloud-link .rh-bk-qrbtn { flex: 0 0 auto; font-size: 9px;
+	font-weight: 700; letter-spacing: 0.04em; color: var(--bk-muted);
+	cursor: pointer; }
+#rh-bk .rh-bk-cloud-link .rh-bk-qrbtn:hover { color: var(--bk-spark); }
 #rh-bk .rh-bk-cloud-link .rh-bk-copy { flex: 0 0 auto; font-size: 9px;
 	font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
 	color: var(--bk-muted); }
 #rh-bk .rh-bk-cloud-link.rh-bk-copied .rh-bk-copy { color: var(--bk-chip-ok-fg); }
 
-/* judge-link QR: a thumbnail per row, click to fill the panel */
-#rh-bk .rh-bk-qr { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 3px;
-	background: #fff; padding: 1px; cursor: zoom-in; display: block; }
+/* judge-link QR: a small "QR" control per row that fills the panel */
 #rh-bk .rh-bk-qrbox { position: absolute; inset: 0; z-index: 5; cursor: zoom-out;
 	display: flex; align-items: center; justify-content: center;
 	background: var(--bk-bg); border-radius: 8px; }
 #rh-bk .rh-bk-qrbox-inner { text-align: center; padding: 10px; }
-#rh-bk .rh-bk-qrbox img { width: 190px; height: 190px; background: #fff;
+#rh-bk .rh-bk-qrbox img { width: 160px; height: 160px; background: #fff;
 	padding: 6px; border-radius: 6px; display: block; margin: 0 auto 6px; }
 #rh-bk .rh-bk-qrbox-who { font-size: 12px; font-weight: 700; color: var(--bk-fg); }
 #rh-bk .rh-bk-qrbox-url { font-size: 9px; color: var(--bk-soft); margin-top: 2px;
